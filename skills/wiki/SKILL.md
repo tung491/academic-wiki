@@ -888,3 +888,90 @@ git checkout <pre-remove-sha> -- "03-Resources/$NAME/"
 ```
 
 If the wiki was NOT under the vault's git (typical — the nested repo was self-contained), recovery requires external backups. The plugin has no built-in undo.
+
+## Marp slide export
+
+Any wiki page can be exported as a slide deck using Marp (Markdown-based presentations).
+
+### Setup
+
+Marp CLI is installed automatically by the SessionStart hook to:
+
+    ${CLAUDE_PLUGIN_DATA}/node_modules/.bin/marp
+
+If it's missing, install manually:
+
+    cd "${CLAUDE_PLUGIN_DATA}" && npm install @marp-team/marp-cli
+
+### Adding Marp frontmatter
+
+Edit any wiki page (e.g., a concept page) and add these fields to the existing frontmatter:
+
+    ---
+    ...existing frontmatter...
+    marp: true
+    theme: default
+    paginate: true
+    ---
+
+Then structure the body with `---` separators between slides:
+
+    # Slide 1 title
+
+    Content goes here.
+
+    ---
+
+    # Slide 2 title
+
+    - bullet
+    - another bullet
+
+    ---
+
+    # Slide 3
+
+    Summary.
+
+### Rendering
+
+Export to HTML (browser-renderable):
+
+    MARP="${CLAUDE_PLUGIN_DATA}/node_modules/.bin/marp"
+    "$MARP" "${WIKI_ROOT}/wiki/concepts/my-concept.md" -o output.html
+
+Export to PDF (requires Chromium; first run downloads it):
+
+    "$MARP" --pdf "${WIKI_ROOT}/wiki/concepts/my-concept.md" -o output.pdf
+
+Export to PPTX:
+
+    "$MARP" --pptx "${WIKI_ROOT}/wiki/concepts/my-concept.md" -o output.pptx
+
+### Query auto-rendering (slides mode)
+
+When a `/academic-wiki:wiki query` question contains "slides", the synthesized answer gets `marp: true` frontmatter AND is rendered to HTML in the same directory as the query-output file:
+
+    /academic-wiki:wiki query "Give me slides on the key insights of attention mechanisms"
+
+produces:
+
+    wiki/queries/give-me-slides-on-the-key-insights-of-attention-mechanisms.md   ← source
+    wiki/queries/give-me-slides-on-the-key-insights-of-attention-mechanisms.html ← rendered
+
+Users can then `open <path>.html` to view the deck in a browser.
+
+### Obsidian integration
+
+The Obsidian Marp plugin (separate install — search in Community Plugins for "Marp") gives you:
+- A preview pane for `marp: true` pages.
+- Built-in export buttons (HTML / PDF / PPTX) via the command palette.
+
+Both ways of rendering (Obsidian plugin OR `marp-cli` CLI) produce equivalent output. Use whichever fits your workflow.
+
+### Tips
+
+- **Themes**: `theme: default` is the built-in theme. You can also use `theme: gaia` or `theme: uncover`. Custom themes require a CSS file — see Marp docs.
+- **Math**: Marp supports LaTeX via KaTeX. Write equations as `$...$` (inline) or `$$...$$` (display). The wiki uses the same convention, so math in wiki pages carries over directly.
+- **Figures**: `![image description](raw/figures/<paper-id>/fig-1.png)` works if you use paths relative to the wiki root. Obsidian's embed syntax `![[fig-1.png]]` does NOT render in Marp — use standard markdown image syntax.
+- **Paginate**: `paginate: true` shows slide numbers. Skip for title/cover slides via `_paginate: false` in a per-slide directive.
