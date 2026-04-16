@@ -9,9 +9,22 @@ from academic_wiki_lib.frontmatter import read_frontmatter
 
 _STOP_WORDS = frozenset({"a", "an", "the", "on", "of", "for", "with"})
 
+# Letters that don't decompose under NFKD but have standard transliterations
+_MANUAL_FOLD = str.maketrans({
+    "ø": "o", "Ø": "o",
+    "æ": "ae", "Æ": "ae",
+    "œ": "oe", "Œ": "oe",
+    "ß": "ss",
+    "ð": "d", "Ð": "d",
+    "þ": "th", "Þ": "th",
+    "ł": "l", "Ł": "l",
+})
+
 
 def _ascii_fold(s: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", s)
+    # Apply manual fold first (for letters without NFKD decomposition)
+    pre = s.translate(_MANUAL_FOLD)
+    decomposed = unicodedata.normalize("NFKD", pre)
     return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
 
 
@@ -25,7 +38,7 @@ def _first_meaningful_word(title: str) -> str:
         wl = w.lower()
         if wl in _STOP_WORDS:
             continue
-        if wl[0].isdigit():
+        if wl.isdigit():
             continue
         # Fold and strip non-alphanumeric residue
         folded = _ascii_fold(w)
@@ -84,7 +97,11 @@ def find_existing_paper_by_identifiers(wiki_root, identifiers: dict[str, str]) -
             incoming[k] = norm
 
     for p in papers_dir.glob("*.md"):
-        fm, _ = read_frontmatter(str(p))
+        try:
+            fm, _ = read_frontmatter(str(p))
+        except Exception:
+            # Malformed frontmatter — skip but don't abort dedup
+            continue
         existing = fm.get("identifiers") or {}
         if not isinstance(existing, dict):
             continue

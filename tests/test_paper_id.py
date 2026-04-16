@@ -21,8 +21,15 @@ def test_ascii_fold_in_lastname():
     assert generate_paper_id("García", 2024, "Survey of RSMA") == "garcia-2024-survey"
 
 
-def test_numeric_first_word_skipped():
-    assert generate_paper_id("Chen", 2023, "5G Networks") == "chen-2023-networks"
+def test_pure_numeric_first_word_skipped():
+    """A pure numeric word is skipped (e.g., '1000' as a leading number)."""
+    assert generate_paper_id("Chen", 2023, "1000 Genomes Project") == "chen-2023-genomes"
+
+
+def test_alphanumeric_first_word_kept():
+    """A leading digit-alpha compound like '5G' is kept — it's the distinguishing term."""
+    assert generate_paper_id("Chen", 2023, "5G Networks") == "chen-2023-5g"
+    assert generate_paper_id("Smith", 2024, "3D Printing Trends") == "smith-2024-3d"
 
 
 def test_multiple_stop_words_skipped():
@@ -142,3 +149,28 @@ def test_resolve_collision_no_collision(tmp_wiki):
     """If no collision, returns the proposed id unchanged."""
     result = resolve_collision(str(tmp_wiki), "brand-new-2025-paper")
     assert result == "brand-new-2025-paper"
+
+
+def test_find_existing_paper_skips_malformed(tmp_wiki):
+    """Malformed frontmatter in one paper should not break dedup lookup."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    # Write a malformed paper page
+    bad = tmp_wiki / "wiki/papers/bad.md"
+    bad.write_text("---\nkey: : malformed :\n  - indent error\n---\nBody.\n")
+    # And a good one with the target identifier
+    good = tmp_wiki / "wiki/papers/good.md"
+    write_frontmatter(str(good), {
+        "paper-id": "good",
+        "identifiers": {"doi": "10.xx/yy"},
+    }, "")
+    # Lookup must still find the good one
+    found = find_existing_paper_by_identifiers(str(tmp_wiki), {"doi": "10.xx/yy"})
+    assert found == "good"
+
+
+def test_ascii_fold_nordic_germanic_letters():
+    """ø, æ, ß etc. should fold to ASCII equivalents."""
+    assert generate_paper_id("Øster", 2024, "Foo Bar") == "oster-2024-foo"
+    assert generate_paper_id("Müller", 2024, "Baz") == "muller-2024-baz"
+    assert generate_paper_id("Straße", 2024, "Test") == "strasse-2024-test"
+    assert generate_paper_id("Æther", 2024, "Qux") == "aether-2024-qux"
