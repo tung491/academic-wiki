@@ -24,6 +24,19 @@ from academic_wiki_lib.frontmatter import read_frontmatter
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
+_REQUIRED_FIELDS = {
+    "paper": ["paper-id", "type", "status", "created", "updated", "title",
+              "authors", "year", "identifiers", "bib-file", "extract", "tags"],
+    "concept": ["type", "status", "created", "updated", "sources", "tags"],
+    "method": ["type", "status", "created", "updated", "sources", "tags"],
+    "open-problem": ["type", "status", "created", "updated", "sources", "tags"],
+    "claim": ["type", "status", "created", "updated", "sources", "tags"],
+    "result": ["type", "status", "created", "updated", "sources", "tags"],
+    "author": ["type", "name", "slug", "created", "updated", "papers", "tags"],
+    "venue": ["type", "name", "slug", "venue-type", "created", "updated", "papers", "tags"],
+    "query-output": ["type", "question", "status", "created", "updated", "sources", "tags"],
+}
+
 
 def _scan_wiki_files(wiki_root: Path) -> dict[str, tuple[Path, dict, str]]:
     """Return {slug: (path, frontmatter, body)} for every .md under wiki/."""
@@ -71,16 +84,20 @@ def lint(wiki_root: str) -> int:
     # --- Dead-link / alias resolution ---
     for slug, (path, _, body) in files.items():
         rel = str(path.relative_to(wr))
-        for target in WIKILINK_RE.findall(body):
-            t = target.strip()
-            if t in files:
-                inbound[t].add(slug)
-            elif t in alias_to_canonical:
-                canonical = alias_to_canonical[t]
-                issues.append(f"ALIAS_LINK: [[{t}]] in {rel} resolves to [[{canonical}]] — consider rewriting")
-                inbound[canonical].add(slug)
-            else:
-                issues.append(f"DEAD_LINK: [[{t}]] in {rel}")
+        for lineno, line in enumerate(body.splitlines(), start=1):
+            for m in WIKILINK_RE.finditer(line):
+                t = m.group(1).strip()
+                if t in files:
+                    inbound[t].add(slug)
+                elif t in alias_to_canonical:
+                    canonical = alias_to_canonical[t]
+                    issues.append(
+                        f"ALIAS_LINK: [[{t}]] in {rel}:{lineno} resolves to "
+                        f"[[{canonical}]] — consider rewriting"
+                    )
+                    inbound[canonical].add(slug)
+                else:
+                    issues.append(f"DEAD_LINK: [[{t}]] in {rel}:{lineno}")
 
     skip_names = {"index", "log"}
     today = date.today()
@@ -91,6 +108,10 @@ def lint(wiki_root: str) -> int:
             continue
         rel = str(path.relative_to(wr))
         t = fm.get("type")
+        required = _REQUIRED_FIELDS.get(t) or []
+        for field_name in required:
+            if field_name not in fm or fm.get(field_name) is None:
+                issues.append(f"MISSING_FIELD: {rel} lacks required field '{field_name}' for type '{t}'")
         tags = fm.get("tags") or []
 
         # Orphan
@@ -134,7 +155,7 @@ def lint(wiki_root: str) -> int:
                     issues.append(f"MISSING_BIBTEX: {rel} (expected {bib_file})")
                 else:
                     bib_content = bib_path.read_text(errors="ignore")
-                    if "bib-incomplete" in bib_content:
+                    if re.search(r"bib-incomplete:\s*true", bib_content, re.IGNORECASE):
                         issues.append(f"MISSING_BIBTEX: {rel} (bib-incomplete flag)")
 
             # Paper-id based checks
@@ -173,12 +194,16 @@ def lint(wiki_root: str) -> int:
     if index_path.exists():
         idx_body = index_path.read_text()
         # Collect wikilink targets in index.md
-        linked = set(WIKILINK_RE.findall(idx_body))
-        # Any linked slug not present in files is drift
+        linked = {t.strip() for t in WIKILINK_RE.findall(idx_body)}
         for target in linked:
-            target = target.strip()
             if target not in files and target not in alias_to_canonical:
                 issues.append(f"INDEX_DRIFT: index.md references [[{target}]] which doesn't exist")
+        # Reverse: files that exist but are not linked in index.md
+        for slug, (path, _, _) in files.items():
+            if slug in skip_names:
+                continue
+            if slug not in linked:
+                issues.append(f"INDEX_DRIFT: {slug} exists at {path.relative_to(wr)} but is not in index.md")
 
     # --- Report ---
     if not issues:

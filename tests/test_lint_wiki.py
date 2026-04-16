@@ -55,6 +55,8 @@ def test_dead_link_is_flagged(tmp_wiki):
     rc, out, _ = run_lint(tmp_wiki)
     assert "DEAD_LINK" in out
     assert "nonexistent" in out
+    # Line number should appear
+    assert ":1" in out or ":2" in out
     # Lint must NOT auto-create the stub
     assert not (tmp_wiki / "wiki/concepts/nonexistent.md").exists()
 
@@ -302,11 +304,12 @@ def test_ok_when_no_issues(tmp_wiki):
         },
         "body\n",
     )
-    # index.md references the paper
+    # index.md references both pages so reverse INDEX_DRIFT doesn't fire
     (tmp_wiki / "wiki/index.md").write_text(
         "# academic Wiki Index\n\n"
         "## field/nlp\n"
         "- [[p1]] — title (2026-04-16)\n"
+        "- [[foo]] — foo concept (2026-04-16)\n"
     )
     # The paper page needs a fake backlink to avoid being orphaned. Seed that:
     write_frontmatter(
@@ -338,3 +341,46 @@ def test_lint_exit_code_is_zero_on_issues(tmp_wiki):
     # Per spec §5.5, lint is reporting, not gating — exit code 0 even with issues
     assert rc == 0
     assert "MISSING_BIBTEX" in out
+
+
+def test_missing_required_field(tmp_wiki):
+    """A concept page missing 'sources' should be flagged."""
+    write_frontmatter(
+        str(tmp_wiki / "wiki/concepts/p.md"),
+        {"type": "concept", "status": "active",
+         "created": "2026-04-16", "updated": "2026-04-16",
+         # "sources" missing
+         "tags": ["field/nlp"]},
+        "body\n\n## Counter-Arguments and Gaps\n",
+    )
+    rc, out, _ = run_lint(tmp_wiki)
+    assert "MISSING_FIELD" in out
+    assert "sources" in out
+
+
+def test_paper_missing_bibfile_field(tmp_wiki):
+    """Paper missing bib-file in frontmatter flagged as MISSING_FIELD."""
+    write_frontmatter(
+        str(tmp_wiki / "wiki/papers/p.md"),
+        {"paper-id": "p", "type": "paper", "status": "read",
+         "created": "2026-04-16", "updated": "2026-04-16",
+         "title": "T", "authors": [{"slug": "x", "name": "X"}],
+         "year": 2020, "identifiers": {"doi": "10.x/y"},
+         # "bib-file" missing
+         "extract": "raw/extracts/p.md",
+         "tags": ["field/nlp"]},
+        "body\n",
+    )
+    rc, out, _ = run_lint(tmp_wiki)
+    assert "MISSING_FIELD" in out
+    assert "bib-file" in out
+
+
+def test_index_drift_reverse(tmp_wiki):
+    """A file exists but is NOT in index.md — that's drift too."""
+    _paper(tmp_wiki, "p1")
+    # index.md is empty (no wikilinks) but p1 exists
+    (tmp_wiki / "wiki/index.md").write_text("# academic Wiki Index\n")
+    rc, out, _ = run_lint(tmp_wiki)
+    assert "INDEX_DRIFT" in out
+    assert "p1" in out
