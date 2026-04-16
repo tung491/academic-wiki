@@ -763,4 +763,128 @@ This removes only the tag, not the underlying commits. A tag deletion is NOT log
 
 ## `remove <name>`
 
-<Wave 4 fills this in.>
+Delete a wiki and its nested git repo after explicit confirmation. Destructive — all wiki content, commits, and tags are lost.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    NAME="<name>"
+    WIKI_ROOT="$HOME/ObsidianVault/03-Resources/$NAME"
+    QMD="${CLAUDE_PLUGIN_DATA}/node_modules/.bin/qmd"
+
+### Steps
+
+1. **Validate argument.** Require a non-empty `<name>`. Reject names with path separators (`/` or `\`) to prevent arbitrary path deletion:
+    ```bash
+    if [[ -z "$NAME" ]]; then
+        echo "Error: remove requires a <name> argument." >&2
+        exit 2
+    fi
+    if [[ "$NAME" =~ [/\\] ]]; then
+        echo "Error: name must not contain path separators." >&2
+        exit 2
+    fi
+    ```
+
+2. **Check the wiki exists:**
+    ```bash
+    if [[ ! -d "$WIKI_ROOT" ]]; then
+        echo "Error: wiki '$NAME' does not exist at $WIKI_ROOT." >&2
+        exit 3
+    fi
+    ```
+
+3. **Show what will be deleted:**
+    ```bash
+    echo "About to delete wiki '$NAME' at $WIKI_ROOT."
+    echo "Contents:"
+    ls "$WIKI_ROOT/" 2>/dev/null | head -20
+    COMMIT_COUNT=$(git -C "$WIKI_ROOT" rev-list --count HEAD 2>/dev/null || echo "0")
+    TAG_COUNT=$(git -C "$WIKI_ROOT" tag | wc -l | tr -d ' ')
+    echo "History: $COMMIT_COUNT commits, $TAG_COUNT tags (ALL will be lost)."
+    ```
+
+4. **Explicit confirmation prompt.** The LLM must ask the user to type the wiki name as confirmation:
+    ```
+    This will PERMANENTLY delete wiki '$NAME' and its git history at $WIKI_ROOT.
+    Type the wiki name exactly to confirm (or anything else to cancel):
+    ```
+    If the user types anything other than the exact `$NAME`, abort:
+    ```bash
+    if [[ "$user_response" != "$NAME" ]]; then
+        echo "Cancelled — name did not match."
+        exit 0
+    fi
+    ```
+
+5. **Acquire the lockfile to prevent concurrent mutation during removal:**
+    ```bash
+    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='remove')"
+    # NO trap for release — the lock file goes away with the directory.
+    ```
+
+6. **Remove the qmd collection if installed:**
+    ```bash
+    if [[ -x "$QMD" ]]; then
+        env -u BUN_INSTALL "$QMD" collection remove "$NAME" 2>/dev/null || true
+    fi
+    ```
+
+7. **Remove the directory and its nested git repo entirely:**
+    ```bash
+    rm -rf "$WIKI_ROOT"
+    ```
+
+8. **Update the Obsidian vault's `.gitignore` if present** — remove the entry for this wiki:
+    ```bash
+    GITIGNORE="$HOME/ObsidianVault/.gitignore"
+    if [[ -f "$GITIGNORE" ]]; then
+        # Remove any line matching `03-Resources/$NAME/` exactly
+        python3 -c "
+    import sys
+    path = '$GITIGNORE'
+    entry = '03-Resources/$NAME/'
+    with open(path) as f:
+        lines = f.readlines()
+    lines = [l for l in lines if l.rstrip() != entry]
+    with open(path, 'w') as f:
+        f.writelines(lines)
+    "
+    fi
+    ```
+
+9. **If the vault is itself a git repo, commit the removal:**
+    ```bash
+    if [[ -d "$HOME/ObsidianVault/.git" ]]; then
+        (
+            cd "$HOME/ObsidianVault"
+            git add -u || true  # Track the removal
+            git commit -m "remove: $NAME wiki" 2>/dev/null || true
+        )
+    fi
+    ```
+
+10. **Print confirmation:**
+    ```
+    Wiki '$NAME' removed.
+    ```
+
+### Design notes
+
+- **Double confirmation** (type-the-name prompt) is deliberate. The plugin never auto-confirms destructive ops.
+- **`-rf`** is the right flag — the directory includes its own `.git/` subdirectory and we want both gone.
+- **Lock acquisition before rm** — prevents a concurrent `ingest`/`compile`/etc. from racing the deletion and writing to a half-gone directory.
+- **Vault .gitignore cleanup** — the `init` command added the entry; `remove` removes it for symmetry.
+- **No trap for lock release** — the lock file goes away with the directory itself.
+
+### Post-removal recovery
+
+If the deletion was accidental AND the vault is a git repo:
+```bash
+cd ~/ObsidianVault
+git reflog                          # find the pre-removal commit
+git checkout <pre-remove-sha> -- "03-Resources/$NAME/"
+```
+
+If the wiki was NOT under the vault's git (typical — the nested repo was self-contained), recovery requires external backups. The plugin has no built-in undo.
