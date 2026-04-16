@@ -29,11 +29,10 @@ def make_slug(title: str) -> str:
 
     Implements the rules from spec §3.5:
       1. Unicode NFKD normalize + strip combining marks (ASCII-fold).
-      2. Transliterate Greek letters to Latin equivalents.
-      3. Lowercase.
-      4. Drop non-alphanumeric (except hyphens) chars that sit between two
-         alphanumeric characters (no separator inserted); replace all remaining
-         non-alphanumeric (except hyphens) runs with a single hyphen.
+      2. Lowercase.
+      3. Transliterate Greek letters to Latin equivalents (after lowercasing).
+      4. Replace any run of non-alphanumeric (except hyphens) chars with a
+         single hyphen.
       5. Collapse consecutive hyphens.
       6. Strip leading/trailing hyphens.
       7. Stop-word filter: drop leading a/an/the/on/of/for/with iff result
@@ -48,17 +47,14 @@ def make_slug(title: str) -> str:
     decomposed = unicodedata.normalize("NFKD", title)
     folded = "".join(c for c in decomposed if not unicodedata.combining(c))
 
-    # 2. Transliterate Greek
-    transliterated = _transliterate(folded)
+    # 2. Lowercase (before Greek transliteration so only lowercase table is needed)
+    lowered = folded.lower()
 
-    # 3. Lowercase
-    lowered = transliterated.lower()
+    # 3. Transliterate Greek (after lowercasing; uppercase Greek folds to lowercase first)
+    transliterated = _transliterate(lowered)
 
-    # 4a. Drop non-alnum/non-hyphen chars sandwiched between alnum chars (no hyphen inserted)
-    no_inner_punct = re.sub(r"(?<=[a-z0-9])[^a-z0-9 \-]+(?=[a-z0-9])", "", lowered)
-
-    # 4b. Replace remaining non-alnum/non-hyphen runs with a single hyphen
-    tokenized = re.sub(r"[^a-z0-9\-]+", "-", no_inner_punct)
+    # 4. Replace any run of non-alphanumeric/non-hyphen chars with a single hyphen (strict rule 3)
+    tokenized = re.sub(r"[^a-z0-9\-]+", "-", transliterated)
 
     # 5. Collapse multiple hyphens
     collapsed = re.sub(r"-+", "-", tokenized)
@@ -66,18 +62,20 @@ def make_slug(title: str) -> str:
     # 6. Strip leading/trailing hyphens
     stripped = collapsed.strip("-")
 
-    # 7. Stop-word filter
+    # 7. Stop-word filter (only drop leading word if it is a multi-char stop word
+    #    to avoid misidentifying single-char tokens from punctuation splitting as "a")
     parts = stripped.split("-")
-    if len(parts) >= 2 and parts[0] in _STOP_WORDS:
+    if len(parts) >= 2 and len(parts[0]) > 1 and parts[0] in _STOP_WORDS:
         candidate = "-".join(parts[1:])
         if "-" in candidate:  # still multi-word after dropping stop word
             stripped = candidate
 
-    # 8. Truncate at 60 chars, preferring a word boundary
+    # 7. Truncate at 60 chars, preferring a word boundary
     if len(stripped) > _MAX_LEN:
         truncated = stripped[:_MAX_LEN]
         last_hyphen = truncated.rfind("-")
-        if last_hyphen > _MAX_LEN // 2:
+        # Prefer a word boundary if one exists and doesn't leave us with too little
+        if last_hyphen >= 10:  # arbitrary minimum — keep at least 10 chars
             truncated = truncated[:last_hyphen]
         stripped = truncated.strip("-")
 

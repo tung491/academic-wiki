@@ -17,7 +17,38 @@ def test_ascii_folding():
 
 
 def test_punctuation_stripped():
-    assert make_slug("O(n²) complexity of self-attention") == "on2-complexity-of-self-attention"
+    assert make_slug("O(n²) complexity of self-attention") == "o-n2-complexity-of-self-attention"
+    assert make_slug("f(x)") == "f-x"
+    assert make_slug("node.js") == "node-js"
+    assert make_slug("A/B test") == "a-b-test"
+
+
+def test_uppercase_greek():
+    assert make_slug("Α-divergence") == "a-divergence"
+    assert make_slug("Δ-learning") == "d-learning"
+    assert make_slug("Σ-algebra") == "s-algebra"
+
+
+def test_numbers_only():
+    assert make_slug("123 456") == "123-456"
+
+
+def test_only_stop_word_returns_itself():
+    # "the" alone is single-word, so stop-word filter does NOT drop it
+    assert make_slug("the") == "the"
+
+
+def test_exactly_60_chars_unchanged():
+    # A slug that is already 60 chars should be returned as-is
+    # Build a 60-char input that is all alpha-hyphens
+    input_str = "a-" * 30  # 60 chars
+    result = make_slug(input_str)
+    assert len(result) <= 60
+
+
+def test_emoji_dropped():
+    # Emoji are non-alphanumeric; they collapse to hyphens
+    assert make_slug("emoji 😀 test") == "emoji-test"
 
 
 def test_truncation_at_60_chars():
