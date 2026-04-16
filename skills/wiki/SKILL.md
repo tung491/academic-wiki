@@ -315,7 +315,97 @@ Will add: entity extraction for concept/method/open-problem, `cites:` resolution
 
 ## `query <question>`
 
-<Wave 1 Task 1.15 fills this in.>
+Answer a question against the wiki's paper pages (and, in Wave 2+, concept/method/etc. pages). Files the answer for future reuse.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    WIKI_ROOT="<active-wiki-path>"
+    QMD="${CLAUDE_PLUGIN_DATA}/node_modules/.bin/qmd"
+
+Query is mostly read-only. It only takes the lock if the user accepts the promotion prompt at the end.
+
+### Steps
+
+1. **Determine search backend:**
+   - If `qmd` exists and is executable AND a qmd collection for this wiki exists → Phase 2 (qmd).
+   - Otherwise → Phase 1 (index.md + ripgrep).
+
+2. **Phase 1 search (index.md + ripgrep):**
+   - Read `wiki/index.md` in full. Identify candidate paper-ids by matching query keywords against entry titles/descriptions (LLM judgment — loose word match on meaningful nouns).
+   - Run ripgrep for the question's meaningful nouns (skip stop words) against `wiki/papers/*.md`:
+        ```bash
+        rg -l -i -e "<noun1>" -e "<noun2>" "$WIKI_ROOT/wiki/papers/"
+        ```
+     Collect the matching paper-ids.
+   - Union of index-matches and ripgrep-matches = candidates (deduplicated).
+   - Each hit = `{path, score: 1.0, snippet: ripgrep_first_match_line, backend: "index+ripgrep"}`.
+
+3. **Phase 2 search (qmd, only when available):**
+    ```bash
+    env -u BUN_INSTALL "$QMD" query "<question>" --collection <wiki-name> --json
+    ```
+   Parse JSON output for path/score/snippet per hit.
+
+4. **Read all candidate paper pages.** Follow one level of wikilinks if the linked target has frontmatter `type: paper` (or any existing wiki page in Wave 1 — concept/method/etc. don't exist yet).
+
+5. **Synthesize answer:**
+   - Default: **prose** with inline `[[paper-id]]` wikilinks as citations. Every factual claim must be attributed.
+   - If the question contains "compare" or "table": markdown table with paper-ids in cells.
+   - If the question contains "slides": Marp markdown with `marp: true` frontmatter; save as `.md` that can be rendered via `${CLAUDE_PLUGIN_DATA}/node_modules/.bin/marp`.
+
+6. **File the answer to `wiki/queries/<slug>.md`** (mandatory, no prompt). Use this frontmatter:
+    ```yaml
+    ---
+    type: query-output
+    question: "<original question>"
+    status: filed
+    created: YYYY-MM-DD
+    updated: YYYY-MM-DD
+    sources: [<paper-id-1>, <paper-id-2>, ...]    # all cited paper-ids
+    tags: [field/..., ...]                         # union of tags from sources
+    ---
+    ```
+    Slug: `academic_wiki_lib.slug.make_slug(<question>)` (truncated at 60 chars automatically).
+
+    Acquire the lockfile JUST BEFORE writing this file (query is mostly read-only; only the write needs a lock).
+
+7. **Prompt for promotion:**
+    ```
+    Promote this answer to a first-class page? Type one of:
+      - "concept", "method", "open-problem", "claim", "result" — promote as that type
+      - "no" — keep only in queries/
+    ```
+
+    If the user accepts:
+    - Move the file from `wiki/queries/<slug>.md` to `wiki/<type>s/<slug>.md` (e.g., `wiki/concepts/<slug>.md`).
+    - Update frontmatter: `type: <chosen-type>`, `status: promoted` (for query-output, then convert to the target entity's schema), `sources:` stays.
+    - Expand the file into the target entity's schema (§3.1-3.3 for that type). The LLM rewrites the body to match the target template (e.g., for `concept`: `Definition` / `Details` / `See Also` / `Counter-Arguments and Gaps`).
+
+8. **Append to `log.md`:** `## [YYYY-MM-DD] query | <slug>`. If promoted: also `## [YYYY-MM-DD] promote | <slug> to <type>`.
+
+9. **Commit inside the wiki's own repo** if anything was written:
+    ```bash
+    git -C "$WIKI_ROOT" add .
+    git -C "$WIKI_ROOT" commit -m "query: <slug>"
+    ```
+    Use `promote: <slug> to <type>` if promoted instead.
+
+10. **Release lockfile** (if acquired in step 6).
+
+### Search ranking notes
+
+- Phase 1 returns hits with uniform `score: 1.0` — no real ranking, LLM uses order of reading.
+- Phase 2 (qmd) returns hits with qmd's BM25+vector scores.
+- Controller/LLM should read the top candidates first; stop adding more when confident there's enough evidence for a thorough answer. Typical: 5-15 paper pages per query.
+
+### Wave 2+ extensions
+
+Once Wave 2 compile creates concept/method/open-problem pages, query extends:
+- Candidate set includes non-paper entity pages.
+- Wikilink-following can cross into entity pages.
+- Promotion prompt offers all entity types (already listed above).
 
 ## `lint [--fix-dead-links] [--suggest-backlinks] [--with-suggestions]`
 
