@@ -256,7 +256,62 @@ This fires on any exit (normal or error). The explicit release in step 15 is not
 
 ## `compile [<paper-id>] [--paper-only]`
 
-<Wave 1 Task 1.14 fills this in with the paper-only tier; Wave 2 extends.>
+Wave 1 ships **paper-only tier** as default. Creates/updates `wiki/papers/<paper-id>.md` from `raw/extracts/<paper-id>.md`. Does NOT do entity extraction, cross-paper synthesis, or backlink audit — those arrive in Wave 2.
+
+For detailed behavior see `references/compilation-guide.md`.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    WIKI_ROOT="<active-wiki-path>"
+
+### Steps (paper-only tier)
+
+1. **Acquire lockfile** (op=`compile`):
+    ```bash
+    "$PY" -c "
+    import sys; sys.path.insert(0, '$PYTHONPATH')
+    from academic_wiki_lib.lockfile import acquire
+    acquire('$WIKI_ROOT/.lock', op='compile')
+    "
+    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    ```
+
+2. **Identify sources to compile:**
+   - If `<paper-id>` given: just that one.
+   - Else: list `raw/extracts/*.md` (excluding `*.versions.yml`). For each, check whether `wiki/papers/<paper-id>.md` exists; if it does, compare the extract's `extracted-at` to the paper page's `updated:` — only re-compile if the extract is newer (source changed since last compile). Compile all sources that are new or updated.
+   - If nothing to compile: print `All sources already compiled. Nothing to do.` Release lock, exit.
+
+3. **For each source:**
+    a. Read `raw/extracts/<paper-id>.md` via `read_frontmatter`. Keep the body (the actual paper text/LaTeX).
+    b. Read `raw/notes/<paper-id>.md` if it exists.
+    c. Check if `wiki/papers/<paper-id>.md` already exists (update case) — if yes, read it and apply the update conflict policy (§3.6) during merge.
+    d. LLM generates body content: Metadata / Summary / Key Contributions / Methods / Results / Claims / User Notes / See Also sections.
+    e. LLM extracts `references-raw: [...]` from the bibliography section of the extract.
+    f. LLM infers `field/*`, `subfield/*`, `method/*` tags from content. `year/<YYYY>` and `venue/<slug>` from frontmatter.
+    g. Populate `authors:` as list of `{slug: <author-slug>, name: <human-name>}` objects. Generate each slug via `academic_wiki_lib.slug.make_slug`.
+    h. Write `wiki/papers/<paper-id>.md` via `academic_wiki_lib.frontmatter.write_frontmatter`.
+
+4. **Update `wiki/index.md`:** append under a `## Uncategorized` heading (field tagging kicks in properly in Wave 2). Format: `- [[<paper-id>]] — <title> (YYYY-MM-DD)`. Avoid duplicates (check if the line already exists).
+
+5. **Append to `log.md`:** `## [YYYY-MM-DD] compile | N paper pages created/updated` with a body line listing the paper-ids.
+
+6. **Commit inside the wiki's own repo:**
+    ```bash
+    git -C "$WIKI_ROOT" add .
+    git -C "$WIKI_ROOT" commit -m "compile: paper-only <N> papers: <first-paper-id>, ..."
+    ```
+
+7. **Release lock** (trap handles this on exit).
+
+### When updating an existing paper page
+
+Apply spec §3.6: preserve prior claims, append new evidence, flag contradictions with `[!WARNING]` callouts, bump `updated:`, never replace without provenance.
+
+### Full tier (Wave 2)
+
+Will add: entity extraction for concept/method/open-problem, `cites:` resolution, backlink audit with ≥2-word allowlist, cross-paper candidate detection (writes to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`; NO silent auto-promote). See `references/compilation-guide.md` when Wave 2 ships.
 
 ## `query <question>`
 
