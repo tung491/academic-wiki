@@ -74,3 +74,24 @@ def test_empty_input_raises():
         make_slug("")
     with pytest.raises(ValueError):
         make_slug("   ")
+
+
+def test_leading_article_dropped_without_ab_conflict():
+    # Real article "A" at start — must be dropped
+    assert make_slug("A Theory of Mind") == "theory-of-mind"
+    assert make_slug("A Survey of Transformers") == "survey-of-transformers"
+    # "A/B" should NOT have its A dropped (it's not a leading article; it's part of "A/B")
+    assert make_slug("A/B test") == "a-b-test"
+
+
+def test_x_plus_y_punctuation():
+    assert make_slug("x+y") == "x-y"
+
+
+def test_truncation_backs_up_to_any_hyphen():
+    # Single hyphen near the start; remainder is long
+    long_input = "abcde-" + "f" * 80
+    result = make_slug(long_input)
+    assert len(result) <= 60
+    # Should back up to the hyphen, producing a 5-char slug
+    assert result == "abcde"
