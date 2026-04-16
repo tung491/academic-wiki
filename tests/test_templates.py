@@ -85,3 +85,38 @@ def test_qmd_yml_different_names():
     y2 = qmd_yml("other-topic")
     assert "academic" in y1
     assert "other-topic" in y2
+
+
+def test_claude_md_has_no_to_be_filled_markers():
+    """Task 1.10 must fill in all spec content — no placeholders remain."""
+    doc = claude_md("academic")
+    assert "<TO BE FILLED" not in doc
+    assert "TO BE FILLED" not in doc  # Catch variant phrasings
+
+
+def test_claude_md_is_substantial():
+    """After Task 1.10 fills in all sections, CLAUDE.md should be >=500 lines."""
+    doc = claude_md("academic")
+    assert doc.count("\n") >= 500, f"CLAUDE.md only has {doc.count(chr(10))} lines"
+
+
+def test_claude_md_contains_key_spec_content():
+    """Spot checks that specific content from key spec sections is present."""
+    doc = claude_md("academic")
+    # From §3.1 paper schema
+    assert "paper-id" in doc
+    assert "citation-key" in doc
+    assert "identifiers:" in doc
+    # From §3.5 slug generation
+    assert "Unicode NFKD normalize" in doc or "NFKD" in doc
+    # From §3.7 raw-side metadata
+    assert "source-sha" in doc
+    # From §4 tag taxonomy
+    assert "field/" in doc
+    assert "subfield/" in doc
+    # From §5.2 ingest
+    assert "arXiv" in doc
+    # From §5.7 snapshot
+    assert "snapshot/" in doc
+    # From §8.1 lockfile
+    assert ".lock" in doc
