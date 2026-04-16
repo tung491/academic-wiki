@@ -650,7 +650,116 @@ Use `--keys` when you know exactly what to export; use `--query` when you want t
 
 ## `snapshot <label>`
 
-<Wave 3 fills this in.>
+Tag the wiki's state for reproducibility — e.g., the state when you submitted a paper. Operates on the wiki's own nested git repo so the tag captures ONLY wiki state, not unrelated Obsidian vault changes.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    WIKI_ROOT="<active-wiki-path>"
+    LABEL="<user-supplied-label>"
+
+### Steps
+
+1. **Acquire lockfile:**
+    ```bash
+    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='snapshot')"
+    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    ```
+
+2. **Validate label.** Require a non-empty label. Git tag names cannot contain spaces, `~`, `^`, `:`, `?`, `*`, `[`, `\`, or end in `.lock`. Sanitize by replacing whitespace with `-` and rejecting invalid characters:
+    ```bash
+    if [[ -z "$LABEL" ]]; then
+        echo "Error: snapshot requires a <label> argument." >&2
+        exit 2
+    fi
+    # Sanitize: replace whitespace with hyphens
+    LABEL_SANITIZED=$(echo "$LABEL" | tr '[:space:]' '-')
+    # Reject labels with invalid git-tag characters
+    if [[ "$LABEL_SANITIZED" =~ [[:space:]~^:?*\[\\] ]] || [[ "$LABEL_SANITIZED" =~ \.lock$ ]]; then
+        echo "Error: label '$LABEL_SANITIZED' contains characters invalid in git tag names." >&2
+        exit 2
+    fi
+    ```
+
+3. **Check for a tag collision.** If `snapshot/$LABEL_SANITIZED` already exists, abort:
+    ```bash
+    if git -C "$WIKI_ROOT" rev-parse --verify "snapshot/$LABEL_SANITIZED" >/dev/null 2>&1; then
+        echo "Error: tag snapshot/$LABEL_SANITIZED already exists." >&2
+        echo "Use a different label or delete the existing tag with: git -C $WIKI_ROOT tag -d snapshot/$LABEL_SANITIZED" >&2
+        exit 3
+    fi
+    ```
+
+4. **Verify working tree is clean.** Uncommitted changes would not be captured by the tag, so require a clean state:
+    ```bash
+    status=$(git -C "$WIKI_ROOT" status --porcelain)
+    if [[ -n "$status" ]]; then
+        echo "Error: uncommitted changes in the wiki — commit or stash before snapshot." >&2
+        echo "$status" >&2
+        exit 4
+    fi
+    ```
+
+5. **Append to `log.md` BEFORE tagging** (so the log entry is included in the snapshot):
+    ```bash
+    SHA=$(git -C "$WIKI_ROOT" rev-parse HEAD)
+    # Current HEAD sha before the log update
+    DATE=$(date +%Y-%m-%d)
+    cat >> "$WIKI_ROOT/log.md" <<EOF
+
+    ## [$DATE] snapshot | $LABEL_SANITIZED
+    Tagged at $SHA
+    EOF
+    ```
+
+6. **Commit the log update:**
+    ```bash
+    git -C "$WIKI_ROOT" add log.md
+    git -C "$WIKI_ROOT" commit -m "snapshot: $LABEL_SANITIZED"
+    NEW_SHA=$(git -C "$WIKI_ROOT" rev-parse HEAD)
+    ```
+
+7. **Create the git tag** (annotated, so the tag carries a message):
+    ```bash
+    git -C "$WIKI_ROOT" tag -a "snapshot/$LABEL_SANITIZED" -m "snapshot: $LABEL_SANITIZED" "$NEW_SHA"
+    ```
+
+8. **Release lockfile** (trap handles it).
+
+9. **Print confirmation:**
+    ```
+    Tagged snapshot/$LABEL_SANITIZED at $NEW_SHA.
+    Revisit with: git -C "$WIKI_ROOT" checkout snapshot/$LABEL_SANITIZED
+    List all snapshots: git -C "$WIKI_ROOT" tag --list 'snapshot/*'
+    ```
+
+### Design notes
+
+- **Tag namespace `snapshot/*`**: keeps the tag space organized. If you later want other tag conventions (e.g., `paper/*` for paper-submission tags), they won't collide.
+- **Annotated tags**: `-a` creates an annotated tag with author/date/message metadata, which is richer than a lightweight tag and survives `git push --follow-tags`.
+- **Log-then-tag order**: the `log.md` update is committed BEFORE tagging, so the snapshot includes its own log entry. Reading the wiki from the snapshot shows the snapshot itself as an event.
+
+### Recovery — revisiting a snapshot
+
+```bash
+# List all snapshots
+git -C "$WIKI_ROOT" tag --list 'snapshot/*'
+
+# Check out a snapshot (detached HEAD)
+git -C "$WIKI_ROOT" checkout snapshot/icc-2026-submission
+
+# Return to the current state
+git -C "$WIKI_ROOT" checkout -  # or `git checkout main/master/whatever-branch`
+```
+
+### Deleting a snapshot
+
+Rarely needed, but:
+```bash
+git -C "$WIKI_ROOT" tag -d snapshot/<label>
+```
+This removes only the tag, not the underlying commits. A tag deletion is NOT logged in `log.md` by the snapshot command — manually append a note if you care.
 
 ## `remove <name>`
 
