@@ -431,6 +431,20 @@ Every page links to ≥1 other page when content warrants it. During `compile`, 
 
 Do not silently overwrite either side of a contradiction. Lint collects and lists all `[!WARNING]` contradiction markers.
 
+## Init Rules
+
+Scaffolds a new wiki at `~/ObsidianVault/03-Resources/<name>/` (default `academic`). The wiki is created as its own nested git repository.
+
+1. Abort if target exists (suggest `remove <name>` first).
+2. Create full directory tree (§2.2).
+3. `git -C <wiki-path> init` to start the nested repo.
+4. Write `CLAUDE.md` with the complete schema (§§2–7 inline, ~1000–1200 lines).
+5. Write `wiki/index.md`, `log.md`, `.gitignore`, `qmd.yml`.
+6. Update the Obsidian vault's `.gitignore` (if one exists) to exclude `03-Resources/<name>/` so the vault's git doesn't try to track the nested repo. Log a note if the vault isn't itself a git repo.
+7. Initial commit **inside the wiki's own repo**: `git -C <wiki-path> add . && git -C <wiki-path> commit -m "init: <name> wiki"`.
+8. If qmd available: `qmd collection add <wiki-path>/wiki --name <name> && qmd embed --collection <name>`.
+9. Print Web Clipper + Zotero export setup hints.
+
 ## Ingest Rules
 
 Saves a source to `raw/`, generates an extract, stubs BibTeX, and assigns a canonical `paper-id`. Does **not** create wiki pages — `compile` does.
@@ -499,7 +513,7 @@ After Wave 1 is in use and stable, compile adds:
 
 1. **Entity extraction**: identify concepts, methods, open-problems from the extract. Create/update `wiki/concepts/<slug>.md`, `wiki/methods/<slug>.md`, `wiki/open-problems/<slug>.md` per §3 schemas and §3.5 slug rules. Append `paper-id` to each page's `sources:`. Apply the update conflict policy (§3.6).
 2. **Claim/result drafting**: draft claims and results as inline sections in the paper page (as in Wave 1).
-3. **Cross-paper candidate detection** — NO silent auto-promotion. Use LLM judgment on semantic equivalence to identify candidates where a claim/result in this paper overlaps with one in another paper's Claims/Results section. Write candidates to a scratch file `outputs/reports/YYYY-MM-DD-promotion-candidates.md` with proposed slug, source paper-ids, and proposed content. Promotion itself requires an explicit user action via `query` + promote or a future `/{{NAME}}-wiki:wiki promote <candidate-id>` command.
+3. **Cross-paper candidate detection** — NO silent auto-promotion. Use LLM judgment on semantic equivalence to identify candidates where a claim/result in this paper overlaps with one in another paper's Claims/Results section. Write candidates to a scratch file `outputs/reports/YYYY-MM-DD-promotion-candidates.md` with proposed slug, source paper-ids, and proposed content. Promotion itself requires an explicit user action via `query` + promote or a future `/academic-wiki:wiki promote <candidate-id>` command.
 4. **`cites:` resolution**: LLM fuzzy-matches entries in `references-raw:` against existing `wiki/papers/` by title + first author + year. Matches populate `cites:`. Unmatched entries remain only in `references-raw:` and surface in lint as candidate new ingests.
 5. **Backlink audit with allowlist**: `grep -rln` to find page titles in other wiki files, but ONLY insert `[[wikilink]]` when:
     - the matched slug is ≥2 words (avoids common single-word pollution like `[[attention]]` or `[[method]]`), OR
@@ -620,4 +634,41 @@ Mutating commands (`ingest`, `compile`, `query` with promotion, `lint --fix-*`, 
 - Any command that panics between acquire and release leaves the lock; stale-pid detection recovers on the next attempt.
 
 Read-only commands (`query` without promotion, `lint` without fix passes) do not take the lock.
+
+## Remove Rules
+
+Deletes a wiki and its nested git repo after confirmation.
+
+1. Acquire `{{NAME}}/.lock` inside `<wiki-path>`.
+2. Verify target exists.
+3. Confirm: `"This will permanently delete '<name>' AND its git history at <wiki-path>. Proceed? (y/n)"`.
+4. Remove qmd collection if present: `qmd collection remove <name>`.
+5. Remove the directory entirely: `rm -rf <wiki-path>` (the nested `.git/` goes with it).
+6. If the Obsidian vault is itself a git repo, commit the removal so the vault's git knows the directory is gone: `git -C ~/ObsidianVault commit -am "remove: <name> wiki"` (no-op if vault isn't a git repo).
+
+Note: the lock is released by the directory being gone.
+
+## Error Catalog
+
+| Situation | Action |
+|---|---|
+| **Lockfile held** | Fail fast (see Lockfile Semantics). |
+| **Lockfile stale** (holding pid gone) | Warn, take the lock, continue. |
+| **No active wiki found** | List candidates in `~/ObsidianVault/03-Resources/*/wiki`. Default to `academic/` if present; else prompt. |
+| **Duplicate source (`source-sha` match)** | Skip ingest; print the existing `paper-id`. |
+| **Duplicate paper (identifier match, different source-sha)** | Treat as new version of an existing paper; reuse `paper-id`, update `identifiers:`, store new source under the same id with `source-version:` distinguishing. |
+| **PDF has no extractable text** | Route to `ocr-papers-to-latex` with OCR mode; if still fails, save PDF as-is, set `extract-status: failed`, warn, don't block. |
+| **Metadata extraction fails** | Fallback `paper-id` = `unknown-<YYYY>-<filename-slug>`; set `metadata-incomplete: true`; lint surfaces. |
+| **arXiv/DOI API failure** | Retry once with backoff. If still failing, log error; suggest manual ingest. |
+| **Paper-id collision** (different paper wants the same id) | Append numeric suffix `-2`, `-3`, ...; never overwrite. |
+| **BibTeX missing** | Stub minimal `@misc`; set `bib-incomplete: true`. |
+| **Git commit fails** | Warn with git output; do not retry; do not use `--no-verify`. User resolves manually. Release lock before surfacing the error. |
+| **qmd crashes / corrupt index** | Fall back to Phase 1 search for that operation; warn once per session. |
+| **Extract exists, paper page missing** | Treat as uncompiled; next `compile` picks up. |
+| **Paper page exists, extract missing** | Lint warning: re-run ingest on the source. |
+| **Invalid `cites:` key** | Lint: "candidate new ingests"; do not auto-ingest. |
+| **`compile` targets non-existent paper-id** | Abort: `No extract found at raw/extracts/<paper-id>.md. Did you run wiki ingest first?` |
+| **Snapshot precondition fails** (uncommitted changes) | Abort with a list of uncommitted files. User commits and retries. |
+| **Dead wikilink** | Flag with context in lint; do not auto-stub. Use `lint --fix-dead-links` for an LLM-assisted stub pass. |
+| **Version drift** (newer version ingested but paper page not updated) | Lint warning: paper page `identifiers.arxiv-version` behind latest version in `raw/extracts/<paper-id>.versions.yml`. |
 """

@@ -120,3 +120,34 @@ def test_claude_md_contains_key_spec_content():
     assert "snapshot/" in doc
     # From §8.1 lockfile
     assert ".lock" in doc
+
+
+def test_claude_md_uses_literal_plugin_name_not_templated():
+    """Command invocations use the fixed plugin name `academic-wiki`, not the wiki name."""
+    # Render with a wiki name that would obviously be wrong if used as plugin name
+    doc = claude_md("physics")
+    # Plugin invocations should use academic-wiki literal
+    assert "/academic-wiki:wiki" in doc
+    # Should NEVER contain the wiki name as plugin name
+    assert "/physics-wiki:wiki" not in doc
+    assert "/physics:wiki" not in doc
+
+
+def test_claude_md_contains_init_section():
+    """§5.1 init rules must be present."""
+    doc = claude_md("academic")
+    # The init section should appear
+    assert "Init Rules" in doc or "init [<name>]" in doc or "Scaffolds a new wiki" in doc
+
+
+def test_claude_md_contains_remove_section():
+    """§5.8 remove rules must be present."""
+    doc = claude_md("academic")
+    assert "Remove Rules" in doc or "remove <name>" in doc or "Deletes a wiki" in doc
+
+
+def test_claude_md_line_count_after_additions():
+    """After adding init and remove sections, CLAUDE.md should be meaningfully larger."""
+    doc = claude_md("academic")
+    # Previous was 554 lines; adding two sections should push it to ≥600
+    assert doc.count("\n") >= 600, f"expected ≥600 lines, got {doc.count(chr(10))}"
