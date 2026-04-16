@@ -165,7 +165,12 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
     print(result or '')
     "
     ```
-    Compare extracted identifiers against every existing paper page's `identifiers:`. If any non-empty identifier matches (`doi`, `arxiv` ignoring version, `url`), the paper already exists — load its `paper-id` and go to step 8 (version handling). Otherwise proceed.
+    Compare extracted identifiers against every existing paper page's `identifiers:`. If any non-empty identifier matches (`doi`, `arxiv` ignoring version, `url`), the paper already exists:
+    - a. Load the existing `paper-id`.
+    - b. **MERGE identifiers:** read the existing paper page's `identifiers:` frontmatter; add any identifiers from the incoming source that weren't already set. Write back the updated `identifiers:` to the paper page. Example: existing has `{arxiv: "1706.03762"}`, incoming provides `{doi: "10.xxx/yyy"}` — after merge, existing page has `{arxiv: "1706.03762", doi: "10.xxx/yyy"}`.
+    - c. Compare the incoming `source-version` against the existing one. If different → proceed to step 8 (version handling). If same or unknown → skip saving a new version (the paper's already here with this source), release lock, log `ingest: deduped <paper-id> (merged identifiers)`, and exit.
+
+    If no identifier matches, the paper does not yet exist — proceed to step 7.
 
 7. **Generate paper-id** (new paper):
     ```bash
@@ -184,7 +189,18 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
    - Append to a per-paper manifest: `raw/extracts/<paper-id>.versions.yml` listing every version ingested with its `source-sha`, `extracted-at`, and `source-path`.
    - Update `wiki/papers/<paper-id>.md` `identifiers.arxiv-version:` to the most recent version.
 
-9. **Metadata-extraction failure fallback:** if metadata cannot be extracted cleanly (scanned PDF without OCR, garbage identifier, etc.), use fallback `paper-id` = `unknown-<current-year>-<filename-slug>` for ALL file basenames consistently. Set `metadata-incomplete: true` in the extract frontmatter. Lint will surface this.
+9. **Metadata-extraction failure fallback** — trigger if ANY of:
+   - First author could not be identified (no author mentioned, or only "Anonymous" etc.)
+   - Year could not be determined as a 4-digit number in the publication range (1900–current year +1)
+   - Title's first meaningful word cannot be extracted (title is missing or consists only of stop words)
+
+   If the failure is partial (e.g., year known but author unknown), still use the fallback — do NOT synthesize a partial `paper-id`.
+
+   Fallback action:
+   - `paper-id` = `unknown-<current-year>-<filename-slug>`
+   - Set `metadata-incomplete: true` in the extract frontmatter
+   - Include whatever metadata WAS extractable in the extract frontmatter (don't drop year if that was the only field found)
+   - Lint will surface this for manual cleanup later
 
 10. **Save files** with `<paper-id>` as the consistent basename:
     - `raw/papers/<paper-id>.pdf` (or `.html`, `.md`, `.tex` depending on source type)

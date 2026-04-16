@@ -9,7 +9,7 @@ Input-type autodetection for `/academic-wiki:wiki ingest <input>`:
 | URL: `arxiv.org/abs/<id>` or `arxiv.org/pdf/<id>` | Extract arXiv ID (preserve version if present, e.g. `1706.03762v5`) → arXiv handler |
 | URL with publisher hostname (IEEE, ACM, Elsevier / ScienceDirect, Springer, Nature, Science, MDPI) | `mcp__agentic-rag-v2__fetch_publisher_html` |
 | Local path ending `.pdf` | `ocr-papers-to-latex` skill — returns LaTeX-rich markdown |
-| Local path ending `.md`, `.markdown`, `.tex` | Treat as pre-extracted. Copy into `raw/papers/<paper-id>.md` (or `.tex`) AND into `raw/extracts/<paper-id>.md` directly. |
+| Local path ending `.md`, `.markdown`, `.tex` | Treat as pre-extracted. Read content + infer metadata from frontmatter/body. Handler returns (content, metadata). The main pipeline saves copies to `raw/papers/<paper-id>.*` and `raw/extracts/<paper-id>.md` in step 10, after paper-id is assigned. |
 | Everything else (bare string, unrecognized URL) | Ask user to disambiguate |
 
 Match patterns in order; first match wins. For arXiv URLs, extract the arXiv ID from the path including any version suffix (`v5`, `v12`, etc.) before passing to the arXiv handler.
@@ -37,7 +37,7 @@ Every handler produces two outputs passed into the pipeline:
 
 For local `.pdf`: the `ocr-papers-to-latex` skill returns LaTeX-rich markdown as the extract; the original PDF is the source file.
 
-For local `.md`/`.tex`: the file itself serves as the extract; a copy goes to `raw/papers/` and an identical copy to `raw/extracts/`.
+For local `.md`/`.tex`: the file itself serves as the extract; the handler returns the content and metadata — the pipeline places copies at `raw/papers/` and `raw/extracts/` after the `paper-id` is assigned in steps 5–7.
 
 ## Post-routing pipeline (spec §5.2 steps 2–16)
 
@@ -54,3 +54,12 @@ After the handler returns, the pipeline continues in this order:
 9. Write extract frontmatter per spec §3.7.
 10. Save or stub BibTeX (`% bib-incomplete: true` comment at top if stubbed).
 11. Append to `log.md`, commit inside the wiki's own git repo, release lock.
+
+## Handler contract
+
+Each handler returns:
+- `content`: the raw bytes or text of the source
+- `metadata`: dict with keys `title`, `authors`, `year`, `doi`, `arxiv`, `arxiv-version`, `url`, `source-type`, etc. (any may be missing)
+- `bibtex`: optional BibTeX string if the handler fetched it
+
+The main pipeline (steps 3-11) takes the handler's returns and does: source-sha → dedup → metadata-to-paper-id → save-with-paper-id-basename. No handler writes to `raw/` directly; they return data for the pipeline to place.
