@@ -97,3 +97,20 @@ def test_list_wikis_accepts_pathlib_path(tmp_path):
     (base / "academic" / "CLAUDE.md").write_text("")
     from pathlib import Path
     assert list_wikis(Path(str(base))) == ["academic"]
+
+
+def test_find_wiki_rejects_directory_named_claude_md(tmp_path):
+    """A directory (not file) named CLAUDE.md should NOT qualify."""
+    fake = tmp_path / "fake"
+    (fake / "wiki").mkdir(parents=True)
+    (fake / "CLAUDE.md").mkdir()  # directory, not file
+    assert find_active_wiki(str(fake)) is None
+
+
+def test_list_wikis_rejects_directory_named_claude_md(tmp_path):
+    """Same rule applies to list_wikis."""
+    base = tmp_path / "03-Resources"
+    fake = base / "fake"
+    (fake / "wiki").mkdir(parents=True)
+    (fake / "CLAUDE.md").mkdir()
+    assert list_wikis(str(base)) == []
