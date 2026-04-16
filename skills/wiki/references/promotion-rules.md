@@ -13,7 +13,12 @@ For each claim or result drafted inline in a newly-compiled paper page:
      - "RSMA outperforms NOMA under imperfect CSI" ≈ "rate-splitting surpasses non-orthogonal MA when CSI is noisy"
    - Examples of non-equivalence (do NOT promote):
      - "attention helps translation" vs "attention is quadratic" — different claims
-     - "X is faster than Y by 10%" vs "X is faster than Y by 30%" — same claim type but different quantitative assertion; consider promoting with a `[!WARNING]` contradiction callout.
+     - "X is faster than Y by 10%" vs "X is faster than Y by 30%" — **do NOT merge into a single claim/result page**. These are conflicting quantitative findings that require manual resolution. Instead:
+       - Keep them as separate inline claims in each paper page.
+       - Add a `> [!WARNING] Contradiction with [[other-paper-id]]` callout in each paper, pointing at the other.
+       - Write a candidate entry in `outputs/reports/*-promotion-candidates.md` of type `contested` (not a normal claim/result) so the user can review and decide how to represent the disagreement. Flag it explicitly as `**Contradiction, not equivalence**` in the candidate body.
+
+**Contradiction rule:** When detecting semantic equivalence, always check if the statements disagree on quantity, direction, or substantive detail. If they disagree, treat as a contradiction — route to the "contested candidate" flow described at the end of this section, not the normal equivalence-promotion flow.
 
 2. If ≥1 equivalent match is found, write a candidate entry to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`:
 

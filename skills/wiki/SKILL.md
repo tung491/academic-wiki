@@ -317,7 +317,12 @@ All paper-only tier steps, PLUS:
     a. Generate a slug via `academic_wiki_lib.slug.make_slug(<entity-name>)`.
     b. Check if `wiki/<entity-type>s/<slug>.md` exists (where entity-type is `concept`, `method`, or `open-problem`).
     c. If yes: apply §3.6 update conflict policy. Append the current paper-id to `sources:`. Merge any new information from the paper's coverage into the entity page's body. Flag contradictions with `[!WARNING]` callouts. Bump `updated:`.
-    d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags: [field/..., subfield/...]` (inherit from the paper's tags), `status: active`.
+    d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags: [field/..., subfield/...]` (inherit from the paper's tags), and `status:` set per the entity type's allowed values:
+       - concept: `active`
+       - method: `active`
+       - open-problem: `open` (default; override to `resolved` only if the paper explicitly provides a resolution)
+       - result: `preliminary` (default; promote to `replicated`/`contested` later via cross-paper candidate detection)
+       - claim: `established` (default; promote to `contested`/`fringe` only if other papers push back)
     e. Add `[[wikilinks]]` to the new entity pages in the paper's Methods/Claims/Summary sections as appropriate.
 
 2. **`cites:` resolution:** for each entry in the paper's `references-raw: [...]`:
@@ -328,7 +333,7 @@ All paper-only tier steps, PLUS:
 3. **Backlink audit with ≥2-word slug allowlist** — prevent over-linking of common words:
     a. For each newly-created entity-page slug, run:
         ```bash
-        rg -rln "<slug-with-hyphens-replaced-by-space>" "$WIKI_ROOT/wiki/"
+        rg -l -n --fixed-strings "<slug-with-hyphens-replaced-by-space>" "$WIKI_ROOT/wiki/"
         ```
     b. For each matching page, only insert `[[<slug>]]` if EITHER:
        - The slug is ≥2 hyphen-separated words (e.g., `attention-mechanism`, `rate-splitting-multiple-access`), OR
