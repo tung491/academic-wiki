@@ -1,0 +1,9 @@
+{
+  "name": "academic-wiki-local",
+  "plugins": [
+    {
+      "name": "academic-wiki",
+      "source": "."
+    }
+  ]
+}

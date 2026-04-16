@@ -1,0 +1,8 @@
+{
+  "name": "academic-wiki",
+  "version": "0.1.0",
+  "description": "Academic Wiki — persistent, compounding knowledge base for papers. Ingests PDFs/arXiv/DOIs, compiles wiki pages, exports BibTeX.",
+  "author": {
+    "name": "tung491"
+  }
+}
