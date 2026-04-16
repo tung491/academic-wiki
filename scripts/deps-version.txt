@@ -1,0 +1,2 @@
+@tobilu/qmd@1.0.0
+@marp-team/marp-cli@3.4.0
