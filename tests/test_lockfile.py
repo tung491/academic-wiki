@@ -91,3 +91,26 @@ def test_acquire_then_release_then_acquire(tmp_path):
     acquire(str(lock), op="compile")  # should succeed
     release(str(lock))
     assert not lock.exists()
+
+
+def test_parser_handles_extended_iso_timestamp(tmp_path):
+    """If a lock file has extended-ISO colons (YYYY-MM-DDTHH:MM:SS), parser must still work."""
+    lock = tmp_path / ".lock"
+    # Dead pid + extended ISO with colons
+    lock.write_text("99999999:2026-04-16T10:30:45Z:ingest")
+    with pytest.warns(StaleLockRecovered):
+        acquire(str(lock), op="compile")
+    # Lock should be cleanly ours now
+    assert f"{os.getpid()}" in lock.read_text()
+
+
+def test_acquire_is_atomic_on_exclusive_create(tmp_path):
+    """acquire uses O_EXCL so the file it creates didn't exist before. Verify by
+    seeing FileExistsError propagate as LockHeld when a live-pid lock exists."""
+    lock = tmp_path / ".lock"
+    lock.write_text(f"{os.getpid()}:20260416T000000Z:compile")
+    with pytest.raises(LockHeld) as exc_info:
+        acquire(str(lock), op="ingest")
+    # Error message should contain the op and pid of the holder
+    assert "compile" in str(exc_info.value)
+    assert str(os.getpid()) in str(exc_info.value)
