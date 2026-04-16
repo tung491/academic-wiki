@@ -309,9 +309,57 @@ For detailed behavior see `references/compilation-guide.md`.
 
 Apply spec §3.6: preserve prior claims, append new evidence, flag contradictions with `[!WARNING]` callouts, bump `updated:`, never replace without provenance.
 
-### Full tier (Wave 2)
+### Full tier (Wave 2 — default after Wave 1 is stable; Wave 1 tier remains available via `--paper-only`)
 
-Will add: entity extraction for concept/method/open-problem, `cites:` resolution, backlink audit with ≥2-word allowlist, cross-paper candidate detection (writes to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`; NO silent auto-promote). See `references/compilation-guide.md` when Wave 2 ships.
+All paper-only tier steps, PLUS:
+
+1. **Entity extraction:** after the paper page is written, scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
+    a. Generate a slug via `academic_wiki_lib.slug.make_slug(<entity-name>)`.
+    b. Check if `wiki/<entity-type>s/<slug>.md` exists (where entity-type is `concept`, `method`, or `open-problem`).
+    c. If yes: apply §3.6 update conflict policy. Append the current paper-id to `sources:`. Merge any new information from the paper's coverage into the entity page's body. Flag contradictions with `[!WARNING]` callouts. Bump `updated:`.
+    d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags: [field/..., subfield/...]` (inherit from the paper's tags), `status: active`.
+    e. Add `[[wikilinks]]` to the new entity pages in the paper's Methods/Claims/Summary sections as appropriate.
+
+2. **`cites:` resolution:** for each entry in the paper's `references-raw: [...]`:
+    a. Attempt to fuzzy-match the reference against existing paper pages by title + first-author + year (LLM judgment; loose string match + semantic verification).
+    b. If a match is found, append its paper-id to `cites: [...]`.
+    c. Unmatched entries stay in `references-raw:` only and surface in lint's "candidate new ingests" list.
+
+3. **Backlink audit with ≥2-word slug allowlist** — prevent over-linking of common words:
+    a. For each newly-created entity-page slug, run:
+        ```bash
+        rg -rln "<slug-with-hyphens-replaced-by-space>" "$WIKI_ROOT/wiki/"
+        ```
+    b. For each matching page, only insert `[[<slug>]]` if EITHER:
+       - The slug is ≥2 hyphen-separated words (e.g., `attention-mechanism`, `rate-splitting-multiple-access`), OR
+       - The match appears in a noun phrase that the LLM recognizes as a proper named entity (e.g., in prose like "the Transformer architecture" where `transformer` is a single-word slug but a proper name).
+    c. Skip insertion for single-word slugs like `attention`, `method`, `training` unless rule 3b.2 applies.
+    d. Commit backlink additions together with the entity pages in the same git commit as the compile.
+
+4. **Cross-paper candidate detection** (per `references/promotion-rules.md`): for each claim/result drafted in the paper page, search for semantically equivalent claims/results in other paper pages. When ≥1 equivalent found, append a candidate entry to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`. **Do NOT silently promote** — the user reviews and accepts via query or future `promote` command.
+
+5. **Index update (replacing paper-only Uncategorized):** rewrite `wiki/index.md` with sections by `field/*` tag. Each paper gets listed under its primary field (if multiple, listed under each).
+
+    ```markdown
+    # academic Wiki Index
+
+    Last updated: YYYY-MM-DD
+
+    ## field/wireless-comms
+    - [[vaswani-2017-attention]] — Attention Is All You Need (2026-04-16)
+    - [[chen-2023-5g]] — 5G Networks Survey (2026-04-17)
+
+    ## field/nlp
+    - [[vaswani-2017-attention]] — Attention Is All You Need (2026-04-16)
+
+    ## concepts
+    - [[attention-mechanism]] — The attention mechanism (2026-04-16)
+
+    ## methods
+    - [[rsma]] — Rate-Splitting Multiple Access (2026-04-17)
+    ```
+
+6. Log + commit + qmd re-embed per paper-only flow (unchanged).
 
 ## `query <question>`
 
