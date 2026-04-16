@@ -24,13 +24,11 @@ For each paper-id to compile:
 
 5. Extract bibliography from the extract body and populate `references-raw: [...]` — verbatim strings.
 
-### When updating an existing paper page (re-compile)
+### Update conflict policy
 
-Apply spec §3.6 update conflict policy:
-- Read existing content; preserve prior claims.
-- Append new evidence from the new source.
-- Flag any contradictions with `> [!WARNING] Contradiction with [[other-paper-id]]` callouts.
-- Bump `updated:` frontmatter to today.
+When `compile` touches an existing page (re-compiled paper or updated entity page), see the "Update conflict policy" subsection in `SKILL.md`'s `compile` section for the unified rules.
+
+Key principle: preserve prior content, append new evidence, flag contradictions with `[!WARNING]` callouts, never replace without provenance, bump `updated:`.
 
 ### What NOT to do in paper-only tier (deferred to Wave 2)
 

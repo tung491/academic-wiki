@@ -284,3 +284,48 @@ def test_full_test_suite_passes(tmp_path):
     # Not a self-test; this test is for documentation/presence. The actual
     # verification is `pytest -v` at the repo root returning exit 0.
     pass
+
+
+def test_warning_callout_format_is_obsidian_compatible(tmp_wiki):
+    """The contradiction-flag callout format must match Obsidian's [!WARNING] syntax."""
+    from academic_wiki_lib.frontmatter import write_frontmatter, read_frontmatter
+    page = tmp_wiki / "wiki/concepts/attention-complexity.md"
+    body = (
+        "Attention is quadratic in sequence length per [[vaswani-2017-attention]].\n\n"
+        "> [!WARNING] Contradiction with [[shazeer-2019-fast]]\n"
+        "> Vaswani et al. report O(n²), but Shazeer et al. report O(n log n) under their\n"
+        "> factorized attention variant. Needs resolution.\n"
+    )
+    write_frontmatter(str(page), {
+        "type": "concept",
+        "status": "active",
+        "created": "2026-04-01",
+        "updated": "2026-04-16",
+        "sources": ["vaswani-2017-attention", "shazeer-2019-fast"],
+        "tags": ["field/nlp"],
+    }, body)
+
+    # Roundtrip the page
+    fm, body2 = read_frontmatter(str(page))
+    assert "[!WARNING] Contradiction with" in body2
+    # Both sources remain
+    assert "vaswani-2017-attention" in fm["sources"]
+    assert "shazeer-2019-fast" in fm["sources"]
+
+
+def test_aliases_field_roundtrips(tmp_wiki):
+    """Aliases list roundtrips so lint can resolve old-slug references."""
+    from academic_wiki_lib.frontmatter import write_frontmatter, read_frontmatter
+    page = tmp_wiki / "wiki/concepts/attention-mechanism.md"
+    write_frontmatter(str(page), {
+        "type": "concept",
+        "status": "active",
+        "created": "2026-04-16",
+        "updated": "2026-04-16",
+        "aliases": ["attention", "soft-attention"],
+        "sources": ["vaswani-2017-attention"],
+        "tags": ["field/nlp"],
+    }, "body\n")
+    fm, _ = read_frontmatter(str(page))
+    assert "attention" in fm["aliases"]
+    assert "soft-attention" in fm["aliases"]

@@ -305,10 +305,6 @@ For detailed behavior see `references/compilation-guide.md`.
 
 7. **Release lock** (trap handles this on exit).
 
-### When updating an existing paper page
-
-Apply spec §3.6: preserve prior claims, append new evidence, flag contradictions with `[!WARNING]` callouts, bump `updated:`, never replace without provenance.
-
 ### Full tier (Wave 2 — default after Wave 1 is stable; Wave 1 tier remains available via `--paper-only`)
 
 All paper-only tier steps, PLUS:
@@ -316,7 +312,7 @@ All paper-only tier steps, PLUS:
 1. **Entity extraction:** after the paper page is written, scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
     a. Generate a slug via `academic_wiki_lib.slug.make_slug(<entity-name>)`.
     b. Check if `wiki/<entity-type>s/<slug>.md` exists (where entity-type is `concept`, `method`, or `open-problem`).
-    c. If yes: apply §3.6 update conflict policy. Append the current paper-id to `sources:`. Merge any new information from the paper's coverage into the entity page's body. Flag contradictions with `[!WARNING]` callouts. Bump `updated:`.
+    c. If yes: apply the update conflict policy (§3.6 — see "Update conflict policy" subsection below).
     d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags: [field/..., subfield/...]` (inherit from the paper's tags), and `status:` set per the entity type's allowed values:
        - concept: `active`
        - method: `active`
@@ -365,6 +361,25 @@ All paper-only tier steps, PLUS:
     ```
 
 6. Log + commit + qmd re-embed per paper-only flow (unchanged).
+
+### Update conflict policy (applies to every wiki page updated by compile)
+
+Per spec §3.6. Compile reaches this flow whenever a newly-ingested paper produces content that overlaps an existing wiki page — whether a paper page (re-compile scenario), a concept, method, open-problem, or cross-paper claim/result page.
+
+1. **Read the existing content fully.** Use `academic_wiki_lib.frontmatter.read_frontmatter` to get frontmatter + body.
+2. **Preserve prior claims.** Do NOT delete existing assertions solely because the new source doesn't mention them.
+3. **Append new evidence.** Add the new paper-id to `sources:` (or to `cites:` for paper pages). Incorporate new content in a clearly attributed paragraph or section (e.g., "In <paper-title> (<year>), the authors report...").
+4. **Flag contradictions inline.** When the new source's content is in tension with existing content, insert an Obsidian callout at the point of disagreement:
+    ```markdown
+    > [!WARNING] Contradiction with [[other-paper-id]]
+    > <Paper A> claims X, but <Paper B> (cited above) claims Y. Needs resolution.
+    ```
+    Never silently overwrite either side.
+5. **Never replace without provenance.** Every material claim on a wiki page must trace to ≥1 `paper-id` in `sources:`. If an LLM cannot attribute a claim to a source, the claim is dropped OR marked `status: stale`.
+6. **Bump `updated:` frontmatter** to today's date.
+7. **Do not change `created:`** — it reflects first creation, never re-bumps.
+8. **Aliases:** if a rename/merge happens during update (unusual), add the former slug to the target page's `aliases: []` list. Lint resolves `[[old-slug]]` via alias lookup.
+9. **Log the merge** — the compile commit message should summarize: `compile: merged <new-paper-id> into <N> existing pages` (replaces the default `compile: paper-only ...` or `compile: full ...` subject when merging into existing pages).
 
 ## `query <question>`
 
