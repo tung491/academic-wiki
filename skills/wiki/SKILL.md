@@ -477,7 +477,94 @@ Once Wave 2 compile creates concept/method/open-problem pages, query extends:
 
 ## `lint [--fix-dead-links] [--suggest-backlinks] [--with-suggestions]`
 
-<Wave 3 fills this in.>
+Audit wiki integrity via a deterministic Python script plus opt-in LLM-assisted passes.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    WIKI_ROOT="<active-wiki-path>"
+    SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/lint-wiki.py"
+
+Lint is read-only by default. Only the opt-in `--fix-*` passes acquire the lockfile.
+
+### Steps
+
+1. **Run deterministic checks:**
+    ```bash
+    "$PY" "$SCRIPT" "$WIKI_ROOT" \
+        > "$WIKI_ROOT/outputs/reports/$(date +%Y-%m-%d)-lint.md" \
+        2>&1
+    REPORT="$WIKI_ROOT/outputs/reports/$(date +%Y-%m-%d)-lint.md"
+    ```
+
+    The script emits tagged lines like:
+    - `DEAD_LINK: [[foo]] in wiki/concepts/bar.md:12`
+    - `ALIAS_LINK: [[old]] in wiki/... resolves to [[new]] — consider rewriting`
+    - `ORPHAN: wiki/concepts/foo.md has no inbound links`
+    - `MISSING_FIELD: wiki/... lacks required field 'sources' for type 'concept'`
+    - `MISSING_FIELD_TAG: wiki/...`
+    - `MISSING_SECTION: ... lacks 'Counter-Arguments and Gaps'`
+    - `STALE: ...`
+    - `INVALID_CITES: ... cites unknown paper-id [...]`
+    - `MISSING_BIBTEX: ...`
+    - `INDEX_DRIFT: ...`
+    - `VERSION_DRIFT: ...`
+    - `EXTRACT_MISSING: ...`, `EXTRACT_FAILED: ...`
+    - `CONTRADICTION: ... has [!WARNING] callout`
+    - `PARSE_ERROR: ...` / `EXTRACT_PARSE_ERROR: ...`
+
+2. **Opt-in pass `--fix-dead-links`:** LLM creates stubs for each `DEAD_LINK` issue. Before running, acquire the lockfile:
+    ```bash
+    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='lint')"
+    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    ```
+
+    For each `DEAD_LINK: [[foo]] in <file>:<line>`:
+    - Read `<file>` at `<line>` to get the surrounding context.
+    - Use LLM judgment to infer the target's entity type from the usage:
+      - If the context is prose like "using the [[foo]] method", type = `method`.
+      - If "the concept of [[foo]]", type = `concept`.
+      - If "the open problem of [[foo]]", type = `open-problem`.
+      - If none of the above fits, default to `concept`.
+    - Create a minimal stub at `wiki/<entity-type>s/foo.md` with frontmatter per §3 template and body placeholder text.
+    - Populate `sources:` with whatever paper-ids appear in the same line or nearby paragraph.
+    - Tag with `field/*` inherited from the referring page's tags.
+    - Commit: `lint: created <N> dead-link stubs`.
+
+3. **Opt-in pass `--suggest-backlinks`:** LLM identifies pages that SHOULD link to existing entity pages but currently don't (based on textual mentions that didn't get wikilinked during compile).
+    - For each entity page slug (≥2-word slugs only), search the wiki body for the slug's words appearing in prose.
+    - Propose edits as a diff (do NOT apply silently) written to `outputs/reports/YYYY-MM-DD-backlink-suggestions.md`.
+    - User can review and apply manually (or via a future command).
+    - Commit the suggestions report: `lint: suggested N backlinks (review required)`.
+
+4. **Opt-in pass `--with-suggestions`:** LLM reads the full lint report + a sampling of wiki content and adds a "Suggested Next Steps" section:
+    - 3-5 questions the wiki can't yet answer well (from gaps in content).
+    - 2-3 specific source suggestions that would strengthen gap areas.
+    - Append to the lint report file.
+
+5. **Append to `log.md`:** `## [YYYY-MM-DD] lint | <N> issues found` (if deterministic only), or `## [YYYY-MM-DD] lint | <N> issues, <M> fixed` (if `--fix-dead-links` was used).
+
+6. **Commit the report file (deterministic checks always produce this):**
+    ```bash
+    git -C "$WIKI_ROOT" add outputs/reports/
+    git -C "$WIKI_ROOT" commit -m "lint: <YYYY-MM-DD> (<N> issues)"
+    ```
+
+7. **Release lockfile** (if acquired for a --fix-* pass).
+
+### Exit semantics
+
+- Lint itself never fails the user's session. Issues are reported, not gated.
+- If an opt-in fix pass fails partway, the trap releases the lock and the user can retry with the remaining issues.
+- The deterministic script exits 0 even when issues are found; the exit code reflects script execution success, not issue count.
+
+### Reading the report
+
+The report at `outputs/reports/YYYY-MM-DD-lint.md` is plain text with one issue per line. LLM should summarize key findings to the user:
+- Total issue count by tag.
+- Top-3 most concerning issues (e.g., CONTRADICTION, EXTRACT_FAILED, INVALID_CITES that have high impact).
+- Recommended next action (e.g., "Run lint --fix-dead-links to auto-create 5 stub pages").
 
 ## `export-bibtex <selectors>`
 
