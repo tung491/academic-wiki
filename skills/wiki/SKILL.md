@@ -568,7 +568,85 @@ The report at `outputs/reports/YYYY-MM-DD-lint.md` is plain text with one issue 
 
 ## `export-bibtex <selectors>`
 
-<Wave 3 fills this in.>
+Generate a consolidated `.bib` file for a subset of papers (e.g., all papers tagged with a research-project slug, ready to paste into LaTeX). See `references/bibtex-handling.md` for detail.
+
+### Setup variables
+
+    PY=~/.venv/bin/python
+    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+    WIKI_ROOT="<active-wiki-path>"
+    SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/bibtex-export.py"
+
+Export acquires the lockfile during the output write step; commits the result.
+
+### Selectors
+
+At least one of `--project`, `--field`, `--tag`, `--query`, `--keys`, `--since` must be provided. Multiple selectors combine with AND semantics. `--label <string>` is optional; used verbatim (only filesystem-unsafe chars stripped).
+
+### Steps
+
+1. **Resolve `--query` (if provided) via search backend:** the `--query` flag isn't handled by the CLI directly — SKILL layer resolves it first. Invoke `query`-style Phase 1/Phase 2 search against paper pages, collect the matching paper-ids, and pass them as `--keys` to the CLI instead. This makes `--query` transparently work through the same pipeline.
+
+    ```bash
+    # Pseudo-code:
+    if [[ -n "$QUERY_TEXT" ]]; then
+        matched_pids=$(run_search_against_paper_pages "$QUERY_TEXT")
+        export_args="--keys ${matched_pids//$'\n'/,} $OTHER_ARGS"
+    else
+        export_args="$ORIGINAL_ARGS"
+    fi
+    ```
+
+2. **Acquire lockfile:**
+    ```bash
+    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='export')"
+    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    ```
+
+3. **Invoke the CLI:**
+    ```bash
+    "$PY" "$SCRIPT" "$WIKI_ROOT" $export_args
+    ```
+
+    CLI writes `outputs/bib/YYYY-MM-DD-<label>.bib` and prints a summary:
+    - `Exported N papers to <path>`
+    - `M papers have bib-incomplete issues:` (if any)
+    - On failure: `No papers match the selector(s).` or `No usable BibTeX entries found for N selected papers.`
+
+4. **Append to `log.md`:**
+    ```
+    ## [YYYY-MM-DD] export | <label> (<N> papers)
+    ```
+
+5. **Commit inside the wiki's own repo:**
+    ```bash
+    git -C "$WIKI_ROOT" add outputs/bib/ log.md
+    git -C "$WIKI_ROOT" commit -m "export: <label> (<N> papers)"
+    ```
+
+6. **Release lockfile** (trap handles it).
+
+### Reading the output
+
+`outputs/bib/YYYY-MM-DD-<label>.bib` is a plain BibTeX file. Paste into LaTeX or pass to a bib manager. Each entry has a `% <paper-id>` comment line immediately before the `@type{key,...}` — so you can map back to the wiki page if needed.
+
+### Common usage patterns
+
+- **For a paper draft:** `/academic-wiki:wiki export-bibtex --project rsma-survey-2025`
+  Tag every relevant wiki page with `#project/rsma-survey-2025` as you write, then export at submission time.
+
+- **For a field-scoped review:** `/academic-wiki:wiki export-bibtex --field nlp --since 2024-01-01`
+  Only papers tagged `field/nlp` ingested since 2024-01-01.
+
+- **For an ad-hoc set:** `/academic-wiki:wiki export-bibtex --keys vaswani-2017-attention,bahdanau-2014-neural --label icml-rebuttal`
+  Explicit paper-id list + custom label.
+
+### `--query` vs `--keys`
+
+- `--query`: LLM/search finds papers; you describe the topic in prose.
+- `--keys`: you explicitly list paper-ids.
+
+Use `--keys` when you know exactly what to export; use `--query` when you want the wiki to help find relevant papers.
 
 ## `snapshot <label>`
 
