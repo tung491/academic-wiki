@@ -37,10 +37,16 @@ def _parse_args(argv):
     return p.parse_args(argv)
 
 
+def _sanitize_label(label: str) -> str:
+    """Keep label mostly verbatim (per spec §5.6), but strip filesystem-unsafe chars."""
+    # Replace / \ \0 with hyphens; keep spaces, dots, case, etc.
+    return re.sub(r"[\x00/\\]+", "-", label).strip()
+
+
 def _label_from_selectors(args) -> str:
     """Derive the output-filename label from selectors by priority order."""
     if args.label:
-        return make_slug(args.label)
+        return _sanitize_label(args.label)  # verbatim per spec §5.6
     for attr in ("project", "field", "tag", "query"):
         val = getattr(args, attr)
         if val:
@@ -54,6 +60,35 @@ def _label_from_selectors(args) -> str:
     return "export"
 
 
+def _normalize_to_date(val):
+    """Parse created: into a date regardless of whether it's a string YYYY-MM-DD,
+    an ISO datetime string, or a YAML-parsed datetime/date object."""
+    if val is None:
+        return None
+    # YAML might load a date or datetime object directly
+    try:
+        from datetime import date as _date
+        if isinstance(val, _date):
+            return val if not isinstance(val, datetime) else val.date()
+        if isinstance(val, datetime):
+            return val.date()
+    except Exception:
+        pass
+    s = str(val).strip()
+    # Try plain YYYY-MM-DD first
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.date()
+        except ValueError:
+            continue
+    # Last resort: try fromisoformat (Python 3.11+ handles most ISO variants)
+    try:
+        return datetime.fromisoformat(s.rstrip("Z")).date()
+    except Exception:
+        return None
+
+
 def _matches(fm: dict, args) -> bool:
     tags = fm.get("tags") or []
     if args.project and f"project/{args.project}" not in tags:
@@ -63,9 +98,9 @@ def _matches(fm: dict, args) -> bool:
     if args.tag and args.tag not in tags:
         return False
     if args.since:
-        try:
-            created = datetime.strptime(str(fm.get("created", "")), "%Y-%m-%d").date()
-        except (ValueError, TypeError):
+        created_val = fm.get("created")
+        created = _normalize_to_date(created_val)
+        if created is None:
             return False
         try:
             since = datetime.strptime(args.since, "%Y-%m-%d").date()
@@ -78,8 +113,6 @@ def _matches(fm: dict, args) -> bool:
 
 def export(argv=None) -> int:
     args = _parse_args(argv)
-
-    # Enforce: ≥1 of the first six selectors required
     any_selector = any(
         getattr(args, a) for a in ("project", "field", "tag", "query", "keys", "since")
     )
@@ -91,33 +124,37 @@ def export(argv=None) -> int:
     papers_dir = wr / "wiki" / "papers"
     bib_dir = wr / "raw" / "bib"
 
-    selected: list[tuple[str, Path]] = []
-    seen: set[str] = set()
-
-    # --keys path: explicit ids
+    # Build the candidate set:
+    # - If --keys: the explicit list
+    # - Else: all paper pages in wiki/papers/
+    # Then filter by _matches() (which handles project/field/tag/since filters).
     if args.keys:
-        for key in [k.strip() for k in args.keys.split(",") if k.strip()]:
-            paper_path = papers_dir / f"{key}.md"
-            if paper_path.exists():
-                if key not in seen:
-                    selected.append((key, bib_dir / f"{key}.bib"))
-                    seen.add(key)
-
-    # Tag/project/field/since path: scan papers
-    if any((args.project, args.field, args.tag, args.since)):
+        candidate_ids = [k.strip() for k in args.keys.split(",") if k.strip()]
+        # Deduplicate while preserving order
+        seen_order: list[str] = []
+        for k in candidate_ids:
+            if k not in seen_order:
+                seen_order.append(k)
+        candidate_ids = seen_order
+    else:
         if not papers_dir.is_dir():
             print("No papers directory found.")
             return 1
-        for md in sorted(papers_dir.glob("*.md")):
-            try:
-                fm, _ = read_frontmatter(str(md))
-            except Exception:
-                continue
-            if _matches(fm, args):
-                pid = fm.get("paper-id") or md.stem
-                if pid not in seen:
-                    selected.append((pid, bib_dir / f"{pid}.bib"))
-                    seen.add(pid)
+        candidate_ids = [md.stem for md in sorted(papers_dir.glob("*.md"))]
+
+    selected: list[tuple[str, Path]] = []
+    for pid in candidate_ids:
+        paper_path = papers_dir / f"{pid}.md"
+        if not paper_path.exists():
+            continue  # Silent skip for --keys ids that don't exist
+        try:
+            fm, _ = read_frontmatter(str(paper_path))
+        except Exception:
+            continue
+        if not _matches(fm, args):
+            continue
+        resolved_pid = fm.get("paper-id") or pid
+        selected.append((resolved_pid, bib_dir / f"{resolved_pid}.bib"))
 
     if not selected:
         print("No papers match the selector(s).")
@@ -125,22 +162,32 @@ def export(argv=None) -> int:
 
     incomplete: list[tuple[str, str]] = []
     content_parts: list[str] = []
+    exported_ids: list[str] = []
     for pid, bib_path in selected:
         if not bib_path.exists():
             incomplete.append((pid, "missing .bib file"))
             continue
-        body = bib_path.read_text()
+        body = bib_path.read_text(errors="replace")  # tolerate non-UTF-8
         if re.search(r"bib-incomplete:\s*true", body, re.IGNORECASE):
             incomplete.append((pid, "bib-incomplete flag"))
         content_parts.append(f"% {pid}\n{body.strip()}\n")
+        exported_ids.append(pid)
+
+    if not exported_ids:
+        print(f"No usable BibTeX entries found for {len(selected)} selected papers.")
+        if incomplete:
+            print("Issues:")
+            for pid, reason in incomplete:
+                print(f"  - {pid}: {reason}")
+        return 1
 
     label = _label_from_selectors(args)
     out_dir = wr / "outputs" / "bib"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{date.today().isoformat()}-{label}.bib"
-    out_path.write_text("\n".join(content_parts) + "\n" if content_parts else "")
+    out_path.write_text("\n".join(content_parts) + "\n")
 
-    print(f"Exported {len(selected)} papers to {out_path}")
+    print(f"Exported {len(exported_ids)} papers to {out_path}")
     if incomplete:
         print(f"{len(incomplete)} papers have bib-incomplete issues:")
         for pid, reason in incomplete:

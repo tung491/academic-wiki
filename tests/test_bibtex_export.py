@@ -107,12 +107,13 @@ def test_export_since(tmp_wiki):
     assert "@misc{a," not in content
 
 
-def test_label_override(tmp_wiki):
+def test_label_override_preserves_label_verbatim(tmp_wiki):
     _setup_paper(tmp_wiki, "a", ["field/nlp"], "2024-01-01")
-    rc, out, _ = _run("--field", "nlp", "--label", "my-export", wiki_root=tmp_wiki)
+    # Spec §5.6: --label <string> is used verbatim (filesystem-sanitized only)
+    rc, out, _ = _run("--field", "nlp", "--label", "ICC-2026-Submission", wiki_root=tmp_wiki)
     assert rc == 0
-    files = list((tmp_wiki / "outputs/bib").glob("*my-export*.bib"))
-    assert len(files) == 1
+    files = list((tmp_wiki / "outputs/bib").glob("*ICC-2026-Submission*.bib"))
+    assert len(files) == 1, "Label should appear verbatim in filename (case preserved)"
 
 
 def test_label_resolution_priority_project_beats_field(tmp_wiki):
@@ -168,3 +169,55 @@ def test_output_filename_has_date(tmp_wiki):
     today = date.today().isoformat()
     files = list((tmp_wiki / "outputs/bib").glob(f"{today}-*.bib"))
     assert len(files) == 1
+
+
+def test_export_keys_intersected_with_field(tmp_wiki):
+    """--keys + --field → only papers that are in the keys list AND match the field tag."""
+    _setup_paper(tmp_wiki, "a", ["field/nlp"], "2024-01-01")
+    _setup_paper(tmp_wiki, "b", ["field/wireless"], "2024-01-01")
+    _setup_paper(tmp_wiki, "c", ["field/nlp"], "2024-01-01")
+    # a is nlp; b is wireless; c is nlp
+    # --keys a,b --field nlp → only a (both in keys AND matches field)
+    rc, out, _ = _run("--keys", "a,b", "--field", "nlp", wiki_root=tmp_wiki)
+    assert rc == 0
+    content = list((tmp_wiki / "outputs/bib").glob("*.bib"))[0].read_text()
+    assert "@misc{a," in content
+    assert "@misc{b," not in content, "b is in keys but NOT field/nlp; must be excluded"
+    assert "@misc{c," not in content, "c matches field but NOT in keys; must be excluded"
+
+
+def test_since_accepts_iso_datetime_in_created(tmp_wiki):
+    """created: as ISO datetime string should still be compared for --since."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    # Manually write a paper with ISO datetime in created:
+    write_frontmatter(
+        str(tmp_wiki / "wiki/papers/a.md"),
+        {
+            "paper-id": "a", "type": "paper", "status": "read",
+            "created": "2024-06-01T10:30:00Z", "updated": "2024-06-01T10:30:00Z",
+            "title": "T", "authors": [{"slug": "x", "name": "X"}],
+            "year": 2024, "identifiers": {},
+            "bib-file": "raw/bib/a.bib", "extract": "raw/extracts/a.md",
+            "references-raw": [], "cites": [],
+            "tags": ["field/nlp"],
+        },
+        "body\n",
+    )
+    (tmp_wiki / "raw/bib/a.bib").write_text("@misc{a,}\n")
+    rc, out, _ = _run("--field", "nlp", "--since", "2024-01-01", wiki_root=tmp_wiki)
+    assert rc == 0
+    content = list((tmp_wiki / "outputs/bib").glob("*.bib"))[0].read_text()
+    assert "@misc{a," in content
+
+
+def test_all_bibs_missing_exits_1(tmp_wiki):
+    """If all selected papers have no .bib file, exit 1 with error message, no output file."""
+    _setup_paper(tmp_wiki, "a", ["field/nlp"], "2024-01-01")
+    _setup_paper(tmp_wiki, "b", ["field/nlp"], "2024-01-01")
+    # Delete BOTH bib files
+    (tmp_wiki / "raw/bib/a.bib").unlink()
+    (tmp_wiki / "raw/bib/b.bib").unlink()
+    rc, out, _ = _run("--field", "nlp", wiki_root=tmp_wiki)
+    assert rc == 1
+    # No output file written
+    assert not list((tmp_wiki / "outputs/bib").glob("*.bib"))
