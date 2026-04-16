@@ -24,10 +24,27 @@ def test_sha_differs_for_different_content(tmp_path):
 
 
 def test_sha_handles_large_file(tmp_path):
+    """Full end-to-end: 5MB file hash matches an independent hashlib calculation."""
+    import hashlib
+    payload = b"x" * (5 * 1024 * 1024)
     f = tmp_path / "big.bin"
-    f.write_bytes(b"x" * (5 * 1024 * 1024))  # 5 MB
-    result = file_sha256(str(f))
-    assert len(result) == 64
+    f.write_bytes(payload)
+    expected = hashlib.sha256(payload).hexdigest()
+    assert file_sha256(str(f)) == expected
+
+
+def test_sha_correct_across_chunk_boundaries(tmp_path):
+    """Files at sizes straddling the internal chunk size must hash identically
+    to a single-shot hashlib.sha256 — proves chunked streaming doesn't lose bytes."""
+    import hashlib
+    chunk = 64 * 1024
+    for size in (chunk - 1, chunk, chunk + 1, 3 * chunk, 3 * chunk + 17):
+        payload = bytes((i * 31) & 0xFF for i in range(size))  # pseudo-varied content
+        f = tmp_path / f"size-{size}.bin"
+        f.write_bytes(payload)
+        expected = hashlib.sha256(payload).hexdigest()
+        actual = file_sha256(str(f))
+        assert actual == expected, f"Mismatch at size {size}"
 
 
 def test_sha_of_empty_file(tmp_path):
