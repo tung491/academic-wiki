@@ -339,7 +339,7 @@ Applies to all non-paper entity pages (paper pages use `paper-id`). Concept/meth
 Examples:
 - `"Rate-Splitting Multiple Access"` → `rate-splitting-multiple-access`
 - `"The Attention Mechanism"` → `attention-mechanism` (stop-word dropped)
-- `"O(n²) complexity of self-attention"` → `on2-complexity-of-self-attention` (special chars stripped)
+- `"O(n²) complexity of self-attention"` → `o-n2-complexity-of-self-attention` (non-alphanumeric runs collapse to hyphens; `²` is NFKD-folded to `2`)
 - `"K-means"` → `k-means`
 
 ### 3.6 Update conflict policy
