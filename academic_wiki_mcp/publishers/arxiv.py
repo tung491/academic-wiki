@@ -1,7 +1,6 @@
 from __future__ import annotations
-import re
 
-from academic_wiki_mcp.publishers.base import BasePublisher
+from academic_wiki_mcp.publishers.base import BasePublisher, _normalize_date
 from academic_wiki_mcp.browser import BrowserBackend
 from academic_wiki_mcp.models import Metadata, Section, ContentBlock, Figure
 
@@ -45,11 +44,7 @@ class ArxivPublisher(BasePublisher):
         keywords_els = await browser.query_selector_all(".ltx_classification .ltx_text")
         keywords = [await el.text() for el in keywords_els]
 
-        year: int | None = None
-        if date:
-            m = re.search(r"(\d{4})", date)
-            if m:
-                year = int(m.group(1))
+        date, year = _normalize_date(date)
 
         return Metadata(
             title=title,

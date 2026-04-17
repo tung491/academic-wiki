@@ -50,12 +50,12 @@ async def _download_paper_impl(identifier: str, wiki_path: str) -> dict:
 
     url = _resolve_url(id_type, raw_id)
     publisher = find_publisher(url)
-    is_arxiv_abs_fallback = False
+    is_partial = False
 
     if not publisher and id_type == "arxiv":
         url = f"https://arxiv.org/abs/{raw_id}"
         publisher = find_publisher(url)
-        is_arxiv_abs_fallback = True
+        is_partial = True
 
     if not publisher:
         from urllib.parse import urlparse
@@ -87,41 +87,74 @@ async def _download_paper_impl(identifier: str, wiki_path: str) -> dict:
 
         record_backend_success(pub_domain, backend_name)
 
-        metadata = await publisher.extract_metadata(browser)
-        sections = await publisher.extract_sections(browser)
-        figures = await publisher.extract_figures(browser)
+        # arXiv HTML page quality check: fall back to /abs if no sections found
+        if id_type == "arxiv" and not is_partial:
+            has_sections = ".ltx_section" in html
+            if not has_sections:
+                abs_url = f"https://arxiv.org/abs/{raw_id}"
+                abs_publisher = find_publisher(abs_url)
+                if abs_publisher:
+                    await browser.navigate(abs_url)
+                    url = abs_url
+                    publisher = abs_publisher
+                    is_partial = True
 
-        # Download figures while browser is still open (for auth cookies)
-        for fig in figures:
-            if fig.url and not fig.failed:
-                try:
-                    fig.data = await browser.download_image(fig.url)
-                except Exception:
-                    fig.failed = True
+        try:
+            metadata = await publisher.extract_metadata(browser)
+            sections = await publisher.extract_sections(browser)
+
+            # Annotate metadata before dedup check
+            if id_type == "arxiv":
+                metadata.arxiv = raw_id
+            metadata.url = url
+
+            identifiers: dict[str, str] = {}
+            if metadata.doi:
+                identifiers["doi"] = metadata.doi
+            if metadata.arxiv:
+                identifiers["arxiv"] = metadata.arxiv
+            if metadata.url:
+                identifiers["url"] = metadata.url
+
+            existing = find_existing_paper_by_identifiers(str(wp), identifiers)
+            if existing:
+                return {
+                    "paper_id": existing,
+                    "path": str(wp / "raw" / "papers" / existing),
+                    "title": metadata.title,
+                    "authors": metadata.authors,
+                    "is_new": False,
+                }
+
+            figures = await publisher.extract_figures(browser)
+
+            # Download figures while browser is still open (for auth cookies)
+            for fig in figures:
+                if fig.url and not fig.failed:
+                    try:
+                        fig.data = await browser.download_image(fig.url)
+                    except Exception:
+                        fig.failed = True
+        except Exception as exc:
+            partial_meta = {}
+            try:
+                fallback = await publisher._fallback_metadata(browser)
+                partial_meta = {
+                    "title": fallback.title,
+                    "authors": fallback.authors,
+                    "doi": fallback.doi,
+                    "date": fallback.date,
+                    "venue": fallback.venue,
+                }
+            except Exception:
+                pass
+            return {
+                "error": str(exc),
+                "identifier": identifier,
+                "partial_metadata": partial_meta,
+            }
     finally:
         await browser.close()
-
-    if id_type == "arxiv":
-        metadata.arxiv = raw_id
-    metadata.url = url
-
-    identifiers: dict[str, str] = {}
-    if metadata.doi:
-        identifiers["doi"] = metadata.doi
-    if metadata.arxiv:
-        identifiers["arxiv"] = metadata.arxiv
-    if metadata.url:
-        identifiers["url"] = metadata.url
-
-    existing = find_existing_paper_by_identifiers(str(wp), identifiers)
-    if existing:
-        return {
-            "paper_id": existing,
-            "path": str(wp / "raw" / "papers" / existing),
-            "title": metadata.title,
-            "authors": metadata.authors,
-            "is_new": False,
-        }
 
     last_name = metadata.authors[0].split()[-1] if metadata.authors else "unknown"
     year = metadata.year or 0
@@ -145,7 +178,7 @@ async def _download_paper_impl(identifier: str, wiki_path: str) -> dict:
         "authors": metadata.authors,
         "is_new": True,
     }
-    if is_arxiv_abs_fallback:
+    if is_partial:
         result["partial"] = True
     return result
 

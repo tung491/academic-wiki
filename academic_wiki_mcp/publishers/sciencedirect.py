@@ -1,7 +1,6 @@
 from __future__ import annotations
-import re
 
-from academic_wiki_mcp.publishers.base import BasePublisher
+from academic_wiki_mcp.publishers.base import BasePublisher, _normalize_date
 from academic_wiki_mcp.browser import BrowserBackend
 from academic_wiki_mcp.models import Metadata, Section, ContentBlock, Figure
 
@@ -46,11 +45,7 @@ class ScienceDirectPublisher(BasePublisher):
         kw_els = await browser.query_selector_all(".keyword span")
         keywords = [await el.text() for el in kw_els]
 
-        year: int | None = None
-        if date:
-            m = re.search(r"(\d{4})", date)
-            if m:
-                year = int(m.group(1))
+        date, year = _normalize_date(date)
 
         return Metadata(
             title=title,
@@ -136,9 +131,12 @@ class ScienceDirectPublisher(BasePublisher):
 
                     if (tag === 'FIGURE') {
                         const img = node.querySelector('img');
-                        const src = img?.getAttribute('data-src') || img?.src || '';
-                        if (src && !/clear\\.gif|1x1|blank/i.test(src)) {
-                            currentContent.push({ type: 'figure', figureId: src });
+                        const rawSrc = img?.getAttribute('data-src') || img?.src || '';
+                        if (rawSrc && !/clear\\.gif|1x1|blank/i.test(rawSrc)) {
+                            let figUrl;
+                            try { figUrl = new URL(rawSrc, location.href).href; }
+                            catch { figUrl = rawSrc; }
+                            currentContent.push({ type: 'figure', figureId: figUrl });
                         }
                         node = walker.nextSibling() || walker.nextNode();
                         continue;

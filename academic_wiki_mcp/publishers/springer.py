@@ -1,7 +1,6 @@
 from __future__ import annotations
-import re
 
-from academic_wiki_mcp.publishers.base import BasePublisher
+from academic_wiki_mcp.publishers.base import BasePublisher, _normalize_date
 from academic_wiki_mcp.browser import BrowserBackend
 from academic_wiki_mcp.models import Metadata, Section, ContentBlock, Figure
 
@@ -43,11 +42,7 @@ class SpringerPublisher(BasePublisher):
         kw_els = await browser.query_selector_all(".c-article-subject-list__subject")
         keywords = [await el.text() for el in kw_els]
 
-        year: int | None = None
-        if date:
-            m = re.search(r"(\d{4})", date)
-            if m:
-                year = int(m.group(1))
+        date, year = _normalize_date(date)
 
         return Metadata(
             title=title,
@@ -108,14 +103,19 @@ class SpringerPublisher(BasePublisher):
             # Figures: only .c-article-section__figure (avoids sidebar dupes)
             fig_data = await browser.evaluate("""
                 (secEl) => {
+                    function normalizeUrl(src) {
+                        if (!src) return '';
+                        if (src.startsWith('//')) return 'https:' + src;
+                        if (src.startsWith('http')) return src;
+                        return new URL(src, location.href).href;
+                    }
                     const results = [];
                     secEl.querySelectorAll('.c-article-section__figure').forEach(figDiv => {
                         const img = figDiv.querySelector('picture img, img');
                         if (!img) return;
-                        let src = img.getAttribute('data-src') || img.src || '';
-                        if (!src) return;
-                        if (src.startsWith('//')) src = 'https:' + src;
-                        results.push(src);
+                        const rawSrc = img.getAttribute('data-src') || img.src || '';
+                        if (!rawSrc) return;
+                        results.push(normalizeUrl(rawSrc));
                     });
                     return results;
                 }

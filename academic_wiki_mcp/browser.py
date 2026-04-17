@@ -130,7 +130,10 @@ class PlaywrightBackend(BrowserBackend):
         return [PlaywrightElement(h) for h in handles]
 
     async def evaluate(self, js: str, *args: Any) -> Any:
-        return await self._page.evaluate(js, *args)
+        unwrapped = tuple(
+            a._h if isinstance(a, PlaywrightElement) else a for a in args
+        )
+        return await self._page.evaluate(js, *unwrapped)
 
     async def download_image(self, url: str) -> bytes:
         resp = await self._page.context.request.get(url)
@@ -237,7 +240,10 @@ class SeleniumBackend(BrowserBackend):
         return [SeleniumElement(e, self._driver) for e in els]
 
     async def evaluate(self, js: str, *args: Any) -> Any:
-        return self._driver.execute_script(js, *args)
+        unwrapped = tuple(
+            a._el if isinstance(a, SeleniumElement) else a for a in args
+        )
+        return self._driver.execute_script(js, *unwrapped)
 
     async def download_image(self, url: str) -> bytes:
         import requests

@@ -93,7 +93,9 @@ async def test_extract_metadata_date_prefix_stripped(publisher):
 
     meta = await publisher.extract_metadata(browser)
     assert "Date of Publication:" not in meta.date
-    assert "15 March 2021" in meta.date
+    # Date should be normalized to ISO format YYYY-MM-DD
+    assert meta.date == "2021-03-15"
+    assert meta.year == 2021
 
 
 @pytest.mark.asyncio
