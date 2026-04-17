@@ -10,8 +10,21 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
 ]
+mcp = [
+    "fastmcp>=3.1.1",
+    "playwright>=1.40",
+    "selenium>=4.41.0",
+    "undetected-chromedriver>=3.5.5",
+    "selenium-stealth>=1.0.6",
+    "requests>=2.31",
+]
+
+[tool.setuptools.packages.find]
+include = ["academic_wiki_mcp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "."]
+asyncio_mode = "auto"
