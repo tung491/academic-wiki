@@ -52,11 +52,12 @@ Output per paper:
 ```
 raw/papers/<paper-id>/
 ├── <paper-id>.md
-└── images/
-    ├── fig1.png
-    ├── fig2.png
-    └── ...
+├── fig1.png
+├── fig2.png
+└── ...
 ```
+
+Images are stored flat alongside the markdown file (not in a subdirectory). This matches the web clipper's wikilink format: `![[fig1.png]]` resolves to a file in the same directory. Obsidian resolves wikilinks by filename, so co-locating images with the note is the simplest and most compatible layout.
 
 ## Browser Abstraction
 
@@ -71,17 +72,31 @@ class Element(ABC):
     async def attribute(self, name: str) -> str | None: ...
     @abstractmethod
     async def scroll_into_view(self) -> None: ...
+    @abstractmethod
+    async def click(self) -> None: ...
+    @abstractmethod
+    async def children(self) -> list[Element]: ...
+    @abstractmethod
+    async def next_sibling(self) -> Element | None: ...
+    @abstractmethod
+    async def parent(self) -> Element | None: ...
+    @abstractmethod
+    async def tag_name(self) -> str: ...
 
 class BrowserBackend(ABC):
     async def navigate(self, url: str) -> None
     async def wait_for_selector(self, selector: str, timeout: int = 15000) -> None
     async def query_selector(self, selector: str) -> Element | None
     async def query_selector_all(self, selector: str) -> list[Element]
+    async def evaluate(self, js: str, *args) -> Any: ...
     async def download_image(self, url: str) -> bytes
+    async def sleep(self, ms: int) -> None: ...
     async def close(self) -> None
 ```
 
 `PlaywrightBackend` and `SeleniumBackend` each provide their own `Element` subclass wrapping the native handle. Default `wait_for_selector` timeout is 15 seconds; publisher modules may pass higher values for slow-loading publishers (e.g., ScienceDirect React hydration).
+
+The `Element` interface includes `click()`, `children()`, `next_sibling()`, `parent()`, and `tag_name()` for DOM traversal — required by publishers like T&F (click-driven popup table extraction, modal closing), ScienceDirect and MDPI (DOM-order walking rather than simple selector pulls), and Springer (sibling-based section parsing). `BrowserBackend.evaluate(js)` allows running arbitrary JS in the page context for complex extraction logic. `BrowserBackend.sleep(ms)` provides timing control for lazy-loading and animation waits.
 
 ### Fallback Strategy
 
@@ -135,7 +150,10 @@ class Metadata:
     authors: list[str]
     abstract: str
     doi: str
-    date: str              # "2021-04-08"
+    arxiv: str | None      # arXiv ID if applicable (e.g., "1706.03762")
+    url: str               # canonical publisher URL
+    date: str              # ISO format "2021-04-08" — publisher extractors normalize raw date strings
+    year: int | None       # extracted integer year for paper-id generation; None if unparseable
     venue: str
     keywords: list[str]
 
@@ -162,22 +180,29 @@ class Figure:
 
 ### Publisher Routing
 
-URL pattern matching registry (same approach as web clipper's `PUBLISHERS` object):
+URL pattern matching registry. Uses **domain suffix matching** (not exact hostname) to handle `www.` prefixes and subdomains that DOI redirects commonly land on (e.g., `www.sciencedirect.com`, `www.mdpi.com`):
 
 ```python
-PUBLISHERS = {
-    "arxiv.org": ArxivPublisher,
-    "ieeexplore.ieee.org": IEEEPublisher,
-    "link.springer.com": SpringerPublisher,
-    "sciencedirect.com": ScienceDirectPublisher,
-    "mdpi.com": MDPIPublisher,
-    "onlinelibrary.wiley.com": WileyPublisher,
-    "tandfonline.com": TandFPublisher,
-    "ascelibrary.org": ASCEPublisher,
-}
+PUBLISHERS = [
+    ("arxiv.org",              ArxivPublisher),
+    ("ieeexplore.ieee.org",    IEEEPublisher),
+    ("link.springer.com",      SpringerPublisher),
+    ("sciencedirect.com",      ScienceDirectPublisher),
+    ("mdpi.com",               MDPIPublisher),
+    ("onlinelibrary.wiley.com", WileyPublisher),
+    ("tandfonline.com",        TandFPublisher),
+    ("ascelibrary.org",        ASCEPublisher),
+]
+
+def find_publisher(url: str) -> BasePublisher | None:
+    hostname = urlparse(url).hostname or ""
+    for suffix, cls in PUBLISHERS:
+        if hostname == suffix or hostname.endswith("." + suffix):
+            return cls()
+    return None
 ```
 
-For DOI inputs, the server follows the `https://doi.org/{doi}` redirect to discover the publisher domain, then picks the correct extractor. For arXiv, it navigates to `arxiv.org/html/{id}` (the full HTML rendering with `.ltx_section`, `.ltx_figure` classes). Falls back to `arxiv.org/abs/{id}` only if the HTML page returns 404 (older papers without HTML rendering).
+For DOI inputs, the server follows the `https://doi.org/{doi}` redirect to discover the publisher domain, then picks the correct extractor. For arXiv, it navigates to `arxiv.org/html/{id}` (the full HTML rendering with `.ltx_section`, `.ltx_figure` classes). If the HTML page returns 404 (older papers without HTML rendering), falls back to `arxiv.org/abs/{id}` in **metadata-only mode**: extracts title, authors, abstract, date, and categories from the abstract page, but returns empty sections and no figures. The tool's return value includes a `partial: true` flag so the caller knows full content was not extracted.
 
 CSS selectors for each publisher are ported from the web clipper's JS content scripts. Same fallback chain: publisher-specific selectors first, then `meta[name="citation_*"]` tags.
 
@@ -205,10 +230,11 @@ Pipeline:
 2. Navigate with browser (Playwright → Selenium fallback)
 3. Pick publisher extractor from `PUBLISHERS` registry
 4. Extract metadata, sections, figures
-5. Generate `paper-id` from metadata (see Paper-ID Generation below)
-6. Download all figure images into `{wiki_path}/raw/papers/{paper-id}/images/`
-7. Render Obsidian markdown → save as `{paper-id}.md`
-8. Return `{ paper_id, path, title, authors }`
+5. **Dedup check** — call `find_existing_paper_by_identifiers(wiki_path, {doi, arxiv, url})` from `paper_id.py`. If a match is found, return the existing paper-id and skip download (or offer to overwrite)
+6. Generate `paper-id` from metadata (see Paper-ID Generation below), then `resolve_collision()` for suffix
+7. Download all figure images into `{wiki_path}/raw/papers/{paper-id}/`
+8. Render Obsidian markdown → save as `{paper-id}.md`
+9. Return `{ paper_id, path, title, authors, is_new }`
 
 `wiki_path` is validated against the configured wiki root in `config.py`. Validation uses `Path.resolve()` before `Path.is_relative_to(wiki_root)` to prevent `..` traversal and symlink escapes. If the path does not exist or falls outside the wiki root, the tool returns an error.
 
@@ -241,9 +267,12 @@ title: "Attention Is All You Need"
 authors: [Ashish Vaswani, Noam Shazeer, Niki Parmar]
 inline_author: "Vaswani et al."
 paper-id: "vaswani-2017-attention"
-doi: "10.48550/arXiv.1706.03762"
-arxiv: "1706.03762"
+identifiers:
+  doi: "10.48550/arXiv.1706.03762"
+  arxiv: "1706.03762"
+  url: "https://arxiv.org/html/1706.03762"
 date: 2017-06-12
+year: 2017
 venue: "NeurIPS 2017"
 keywords: [transformer, attention, sequence-to-sequence]
 ---
@@ -270,7 +299,10 @@ Conventions matching the web clipper:
 
 Additions beyond web clipper:
 - `paper-id` field in frontmatter (wiki's internal ID)
-- `arxiv` field (when applicable)
+- `identifiers:` nested map (doi, arxiv, url) — matches the wiki's entity schema for dedup via `find_existing_paper_by_identifiers()`
+- `year` as integer — extracted from `date` for paper-id generation
+
+**Date normalization:** Publisher extractors must normalize raw date strings (e.g., IEEE's "Date of Publication: 15 March 2021") to ISO format `YYYY-MM-DD`. If only a year is available, use `YYYY-01-01`. If the date is completely unparseable, set `date` to empty string and `year` to `None` — the paper-id generator falls back to `0000` for the year component.
 
 ## Paper-ID Generation
 
@@ -311,7 +343,7 @@ Detection pipeline:
 - **Unsupported publisher:** DOI redirect lands on unknown domain → error: "Publisher {domain} not supported"
 - **Rate limiting:** Semantic Scholar — exponential backoff, max 5 retries
 - **Image failures:** Mark figure as failed, continue extraction, note in HTML comment
-- **Total failure:** Both backends fail → return partial result (metadata from `meta` tags if available) with error flag
+- **Total failure:** Both backends fail → return error dict with `{ error, identifier, partial_metadata }`. No files are written to disk. The caller can use partial metadata (title, authors from `meta` tags) to display a useful error message.
 
 ## Testing Strategy
 
