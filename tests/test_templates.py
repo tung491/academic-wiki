@@ -105,7 +105,7 @@ def test_claude_md_contains_key_spec_content():
     doc = claude_md("academic")
     # From §3.1 paper schema
     assert "paper-id" in doc
-    assert "citation-key" in doc
+    assert "citation-key" not in doc  # dropped — paper-id now serves as BibTeX @key
     assert "identifiers:" in doc
     # From §3.5 slug generation
     assert "Unicode NFKD normalize" in doc or "NFKD" in doc
@@ -147,7 +147,7 @@ def test_claude_md_contains_remove_section():
 
 
 def test_claude_md_line_count_after_additions():
-    """After adding init and remove sections, CLAUDE.md should be meaningfully larger."""
+    """CLAUDE.md should be substantial after all sections are present."""
     doc = claude_md("academic")
-    # Previous was 554 lines; adding two sections should push it to ≥600
-    assert doc.count("\n") >= 600, f"expected ≥600 lines, got {doc.count(chr(10))}"
+    # After citation-key removal and Wave terminology cleanup, expected ≥550 lines.
+    assert doc.count("\n") >= 550, f"expected ≥550 lines, got {doc.count(chr(10))}"

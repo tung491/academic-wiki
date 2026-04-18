@@ -106,14 +106,13 @@ The vault's own `.git` (if present) should ignore this nested repo. `init` write
 
 ## Identity Model
 
-**`paper-id` is the canonical key**, not `citation-key`. `paper-id` is a stable internal identifier assigned on first ingest. The human-facing BibTeX citation key is derived from metadata and is an output/export field — it can change without breaking the wiki (§3.1). This is the fix for "same paper ingested via arXiv ID and via DOI" deduplication.
+**`paper-id` is the canonical key**. It is a stable internal identifier assigned on first ingest and used everywhere — filenames, frontmatter, wikilinks, and BibTeX `@key` (§3.1). This is the fix for "same paper ingested via arXiv ID and via DOI" deduplication.
 
 **paper** — `wiki/papers/<paper-id>.md`
 
 ```yaml
 ---
-paper-id: vaswani-2017-attention            # canonical internal ID (stable, never rewrites)
-citation-key: vaswani2017attention          # derived, used for BibTeX export; may change
+paper-id: vaswani2017attention              # canonical internal ID (stable, never rewrites)
 type: paper
 status: queued | skimmed | read | deep-read
 created: YYYY-MM-DD                         # first ingest date
@@ -136,16 +135,16 @@ relationships:                              # optional — relations to other pa
   preprint-of: null                         # paper-id of the journal version
   version-of: null                          # paper-id of the canonical work (if this is a specific version)
   supersedes: []                            # paper-ids this supersedes
-bib-file: raw/bib/vaswani-2017-attention.bib
-extract: raw/extracts/vaswani-2017-attention.md
-notes: raw/notes/vaswani-2017-attention.md  # optional — only if user wrote notes
-figures: raw/figures/vaswani-2017-attention/  # optional
+bib-file: raw/bib/vaswani2017attention.bib
+extract: raw/extracts/vaswani2017attention.md
+notes: raw/notes/vaswani2017attention.md    # optional — only if user wrote notes
+figures: raw/figures/vaswani2017attention/  # optional
 references-raw:                             # unresolved bibliography (verbatim from paper)
   - "Bahdanau, D. et al. 'Neural Machine Translation by Jointly Learning to Align and Translate.' 2014."
   - "Cho, K. et al. 'Learning Phrase Representations...' 2014."
 cites:                                      # resolved references — paper-ids in this wiki
-  - bahdanau-2014-neural
-  - cho-2014-learning
+  - bahdanau2014neural
+  - cho2014learning
 tags: [field/nlp, method/attention, year/2017, venue/nips]
 ---
 ```
@@ -153,12 +152,11 @@ tags: [field/nlp, method/attention, year/2017, venue/nips]
 Body sections: `Metadata` / `Summary` / `Key Contributions` / `Methods` / `Results` / `Claims` / `User Notes` / `See Also`. User-notes section is auto-filled from `raw/notes/<paper-id>.md` if present.
 
 Notes on the identity model:
-- `paper-id` is generated on first ingest (see §5.2). Format mirrors the BibTeX key style for readability but is explicitly hyphen-separated to distinguish it from `citation-key`: `<lastname>-<year>-<firstword>`.
-- `citation-key` (BibTeX-native, no hyphens: `vaswani2017attention`) is a derived export field. If metadata is corrected later, `citation-key` updates without renaming files.
+- `paper-id` is generated on first ingest (see §5.2). Format: `<lastname><year><firstword>`.
 - `identifiers:` is the dedup key. Ingest checks all existing papers' `identifiers:` against the incoming source — a match on any non-empty identifier (`doi`, `arxiv`, `url`, or `source-sha`) means the paper already exists; ingest merges new identifiers into the existing record instead of creating a duplicate.
 - `aliases:` records historical `paper-id` values if the canonical id is ever renamed (e.g., metadata correction changes the first author). Wikilinks to the old id still resolve via alias lookup during lint.
 
-Non-paper entities use `paper-id` values (not `citation-key`) in all reference fields like `sources:`, `supports:`, `evidence-for:`, etc.
+Non-paper entities use `paper-id` values in all reference fields like `sources:`, `supports:`, `evidence-for:`, etc.
 
 ## Entity Types
 
@@ -176,7 +174,7 @@ type: concept
 status: active | stale
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [vaswani-2017-attention, ...]            # paper-ids
+sources: [vaswani2017attention, ...]              # paper-ids
 tags: [field/..., ...]
 ---
 ```
@@ -314,7 +312,7 @@ tags: [field/...]
    - `references-raw:` (paper pages only): the raw bibliography as captured from the source, unresolved.
    - `cites:` (paper pages only): the subset of `references-raw:` that has been resolved to `paper-id`s in the wiki. Every key in `cites:` must match an existing paper page; unmatched raw references stay only in `references-raw:` until their papers are ingested.
    - `sources:` (every non-paper entity): paper-ids that inform this page.
-2. **References are by `paper-id`, not `citation-key`.** `citation-key` is presentation-only; internal graph references are all `paper-id`.
+2. **All internal references use `paper-id`.**
 3. **Status fields are entity-specific.** Different entity types have different meaningful states.
 4. **`cited-by:` is never stored.** Dataview computes it on demand from `cites:` fields.
 5. **Result/claim pages exist only when cross-paper.** Single-paper results/claims stay inline in the paper page until promoted.
@@ -362,8 +360,8 @@ Raw-side metadata lives in `raw/extracts/<paper-id>.md` frontmatter. These field
 
 ```yaml
 ---
-paper-id: vaswani-2017-attention
-source-path: raw/papers/vaswani-2017-attention.pdf
+paper-id: vaswani2017attention
+source-path: raw/papers/vaswani2017attention.pdf
 source-sha: 3f8c1e...                       # SHA-256 of the source file; used for dedup
 source-version: arxiv-v5                    # arXiv version, DOI version, publisher revision, etc.
 source-type: pdf | html | latex | markdown
@@ -474,15 +472,15 @@ Saves a source to `raw/`, generates an extract, stubs BibTeX, and assigns a cano
     - This paper already exists. Load its `paper-id`.
     - Merge: add any new identifiers the incoming source provides; if the incoming `source-version` differs, treat as a new version of the same paper (see step 8).
     - Do NOT create a new paper entity; re-use the existing `paper-id`.
-7. **If no match (truly new paper)**: generate `paper-id` as `<lastname>-<year>-<firstword>`. Collision: if the id is already taken by a different paper (different identifiers), append `-2`, `-3`, ...
+7. **If no match (truly new paper)**: generate `paper-id` as `<lastname><year><firstword>`. Collision: if the id is already taken by a different paper (different identifiers), append `2`, `3`, ...
 8. **Handle versions**: if the new source is a different version of an already-known paper (e.g., existing paper at arXiv v3, incoming is v5):
     - Save the new source file and extract with the same `paper-id` basename but store `source-version: arxiv-v5` in the extract frontmatter.
     - Append the new source to a per-paper-id manifest: `raw/extracts/<paper-id>.versions.yml` listing every version ingested with its `source-sha`, `extracted-at`, and `source-path`.
     - `wiki/papers/<paper-id>.md` updates `identifiers.arxiv-version:` to the most recent; older versions remain referenced in the manifest.
-9. **Metadata-extraction failure fallback** (scan without OCR-able text, garbage metadata): use fallback `paper-id` of `unknown-<current-year>-<filename-slug>` for ALL file basenames consistently; set `metadata-incomplete: true` in the extract frontmatter; log for lint.
+9. **Metadata-extraction failure fallback** (scan without OCR-able text, garbage metadata): use fallback `paper-id` of `unknown<YYYY><filenameslug>` for ALL file basenames consistently; set `metadata-incomplete: true` in the extract frontmatter; log for lint.
 10. **Save files** with `<paper-id>` as the common basename across `raw/papers/`, `raw/extracts/`, `raw/bib/`, `raw/figures/`.
 11. **Write extract frontmatter** per §3.7 with `source-sha`, `extractor`, `extracted-at`, `source-version`, etc.
-12. **BibTeX**: if the source came with BibTeX (identifier-based ingest), save to `raw/bib/<paper-id>.bib`; otherwise stub a minimal `@misc` entry with `bib-incomplete: true`. BibTeX `@key` field uses `citation-key` (BibTeX-native style), not `paper-id`.
+12. **BibTeX**: if the source came with BibTeX (identifier-based ingest), save to `raw/bib/<paper-id>.bib`; otherwise stub a minimal `@misc` entry with `bib-incomplete: true`. BibTeX `@key` field uses `paper-id`.
 13. **Append to `log.md`**: `## [YYYY-MM-DD] ingest | <paper-id>` with one-line summary (new paper, new version, or deduped).
 14. **Commit**: `ingest: <paper-id>` (or `ingest: <paper-id> (new version v5)` / `ingest: deduped <paper-id>`).
 15. **Release lockfile.**
@@ -490,37 +488,28 @@ Saves a source to `raw/`, generates an extract, stubs BibTeX, and assigns a cano
 
 ## Compile Rules
 
-Compile comes in two tiers. Wave 1 ships the **paper-only** tier, which is low-risk and gets the wiki usable fast. Wave 2 adds entity extraction, cross-paper synthesis, and backlink audit. The command name stays the same; a flag controls the tier until Wave 2 is the default.
+Default compile runs the full pipeline (paper pages + entity extraction + `cites:` resolution + backlink audit + cross-paper detection + index rebuild). `--paper-only` skips entity extraction through cross-paper detection.
 
-**Wave 1 tier — `compile [<paper-id>] [--paper-only]`** (default in Wave 1):
+**`compile [<paper-id>] [--paper-only]`**:
 
 1. Acquire `{{NAME}}/.lock`.
 2. Identify sources: given `<paper-id>` or all paper-ids in `raw/extracts/` without a matching `wiki/papers/<paper-id>.md`.
 3. For each source:
     - Read `raw/extracts/<paper-id>.md` + `raw/notes/<paper-id>.md` if present.
-    - Write/update `wiki/papers/<paper-id>.md` per §3.1. Populate `Summary`, `Key Contributions`, `Methods`, `Results`, `Claims`, `User Notes` sections inline. Do NOT create entity pages for concepts/methods/open-problems.
-    - `references-raw:` is populated from the bibliography section of the extract. `cites:` stays empty in Wave 1.
-4. Update `wiki/index.md` (a simple chronological listing of paper pages in Wave 1; sectioned by `field/*` in Wave 2).
-5. Append to `log.md`: `## [YYYY-MM-DD] compile | N paper pages created/updated`.
-6. Commit: `compile: paper-only <summary>`.
-7. Release lock.
-
-Rationale: Wave 1 deliberately avoids entity extraction, cross-paper synthesis, backlink audit, and `cites:` resolution. Those are the highest-risk LLM-judgment operations in the whole design; shipping paper-only first lets you validate the rest of the system on real papers before turning on the risky parts.
-
-**Wave 2 tier — `compile [<paper-id>]`** (default in Wave 2; Wave 1 tier remains available via `--paper-only`):
-
-After Wave 1 is in use and stable, compile adds:
-
-1. **Entity extraction**: identify concepts, methods, open-problems from the extract. Create/update `wiki/concepts/<slug>.md`, `wiki/methods/<slug>.md`, `wiki/open-problems/<slug>.md` per §3 schemas and §3.5 slug rules. Append `paper-id` to each page's `sources:`. Apply the update conflict policy (§3.6).
-2. **Claim/result drafting**: draft claims and results as inline sections in the paper page (as in Wave 1).
-3. **Cross-paper candidate detection** — NO silent auto-promotion. Use LLM judgment on semantic equivalence to identify candidates where a claim/result in this paper overlaps with one in another paper's Claims/Results section. Write candidates to a scratch file `outputs/reports/YYYY-MM-DD-promotion-candidates.md` with proposed slug, source paper-ids, and proposed content. Promotion itself requires an explicit user action via `query` + promote or a future `/academic-wiki:wiki promote <candidate-id>` command.
-4. **`cites:` resolution**: LLM fuzzy-matches entries in `references-raw:` against existing `wiki/papers/` by title + first author + year. Matches populate `cites:`. Unmatched entries remain only in `references-raw:` and surface in lint as candidate new ingests.
-5. **Backlink audit with allowlist**: `grep -rln` to find page titles in other wiki files, but ONLY insert `[[wikilink]]` when:
+    - Write/update `wiki/papers/<paper-id>.md` per §3.1. Populate `Summary`, `Key Contributions`, `Methods`, `Results`, `Claims`, `User Notes` sections inline.
+    - `references-raw:` is populated from the bibliography section of the extract.
+4. **Entity extraction** (skipped with `--paper-only`): identify concepts, methods, open-problems from the extract. Create/update `wiki/concepts/<slug>.md`, `wiki/methods/<slug>.md`, `wiki/open-problems/<slug>.md` per §3 schemas and §3.5 slug rules. Append `paper-id` to each page's `sources:`. Apply the update conflict policy (§3.6).
+5. **Claim/result drafting**: draft claims and results as inline sections in the paper page.
+6. **`cites:` resolution** (skipped with `--paper-only`): LLM fuzzy-matches entries in `references-raw:` against existing `wiki/papers/` by title + first author + year. Matches populate `cites:`. Unmatched entries remain only in `references-raw:` and surface in lint as candidate new ingests.
+7. **Backlink audit with allowlist** (skipped with `--paper-only`): `grep -rln` to find page titles in other wiki files, but ONLY insert `[[wikilink]]` when:
     - the matched slug is ≥2 words (avoids common single-word pollution like `[[attention]]` or `[[method]]`), OR
     - the page title appears within a noun phrase recognized by the LLM as a proper named entity.
     Common-word slugs can still be manually linked; they just aren't auto-linked by the audit.
-6. **Index update**: sectioned by `field/*` tag.
-7. Log + commit + qmd re-embed as in Wave 1.
+8. **Cross-paper candidate detection** (skipped with `--paper-only`) — NO silent auto-promotion. Use LLM judgment on semantic equivalence to identify candidates where a claim/result in this paper overlaps with one in another paper's Claims/Results section. Write candidates to a scratch file `outputs/reports/YYYY-MM-DD-promotion-candidates.md` with proposed slug, source paper-ids, and proposed content. Promotion itself requires an explicit user action via `query` + promote or a future `/academic-wiki:wiki promote <candidate-id>` command.
+9. **Index update**: sectioned by `field/*` tag.
+10. Append to `log.md`: `## [YYYY-MM-DD] compile | N paper pages created/updated`.
+11. Commit: `compile: <summary>`.
+12. Release lock.
 
 ## Query Rules
 
@@ -609,7 +598,7 @@ Single `find_pages(query) → list[SearchHit]` abstraction with multiple backend
 ```python
 # Conceptual shape (the Python lint/export helpers may use this; the SKILL.md itself describes the contract informally)
 class SearchHit:
-    path: str           # relative to wiki root (e.g., "wiki/papers/vaswani-2017-attention.md")
+    path: str           # relative to wiki root (e.g., "wiki/papers/vaswani2017attention.md")
     score: float        # backend-specific; higher is better; normalized to [0, 1] where possible
     snippet: str        # short matching context, if backend supports it; else empty
     backend: str        # "index+ripgrep" | "qmd" | "mcp:<name>"
@@ -658,9 +647,9 @@ Note: the lock is released by the directory being gone.
 | **Duplicate source (`source-sha` match)** | Skip ingest; print the existing `paper-id`. |
 | **Duplicate paper (identifier match, different source-sha)** | Treat as new version of an existing paper; reuse `paper-id`, update `identifiers:`, store new source under the same id with `source-version:` distinguishing. |
 | **PDF has no extractable text** | Route to `ocr-papers-to-latex` with OCR mode; if still fails, save PDF as-is, set `extract-status: failed`, warn, don't block. |
-| **Metadata extraction fails** | Fallback `paper-id` = `unknown-<YYYY>-<filename-slug>`; set `metadata-incomplete: true`; lint surfaces. |
+| **Metadata extraction fails** | Fallback `paper-id` = `unknown<YYYY><filenameslug>`; set `metadata-incomplete: true`; lint surfaces. |
 | **arXiv/DOI API failure** | Retry once with backoff. If still failing, log error; suggest manual ingest. |
-| **Paper-id collision** (different paper wants the same id) | Append numeric suffix `-2`, `-3`, ...; never overwrite. |
+| **Paper-id collision** (different paper wants the same id) | Append numeric suffix `2`, `3`, ... (no separator); never overwrite. |
 | **BibTeX missing** | Stub minimal `@misc`; set `bib-incomplete: true`. |
 | **Git commit fails** | Warn with git output; do not retry; do not use `--no-verify`. User resolves manually. Release lock before surfacing the error. |
 | **qmd crashes / corrupt index** | Fall back to Phase 1 search for that operation; warn once per session. |

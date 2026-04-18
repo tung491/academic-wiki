@@ -108,11 +108,11 @@ def test_ingest_creates_paper_with_extract_frontmatter(tmp_path):
 
     # Generate paper-id from metadata
     paper_id = generate_paper_id("Vaswani", 2017, "Attention Is All You Need")
-    assert paper_id == "vaswani-2017-attention"
+    assert paper_id == "vaswani2017attention"
 
     # Resolve collision (no existing paper, so returns as-is)
     paper_id = resolve_collision(str(wiki), paper_id)
-    assert paper_id == "vaswani-2017-attention"
+    assert paper_id == "vaswani2017attention"
 
     # Rename to paper-id basename
     final_pdf = wiki / f"raw/papers/{paper_id}.pdf"
@@ -152,9 +152,9 @@ def test_ingest_dedup_pass_1_by_source_sha(tmp_path):
     # Write an existing extract with known source-sha
     existing_sha = hashlib.sha256(b"fake content").hexdigest()
     write_frontmatter(
-        str(wiki / "raw/extracts/vaswani-2017-attention.md"),
+        str(wiki / "raw/extracts/vaswani2017attention.md"),
         {
-            "paper-id": "vaswani-2017-attention",
+            "paper-id": "vaswani2017attention",
             "source-sha": existing_sha,
             "source-type": "pdf",
         },
@@ -173,16 +173,16 @@ def test_ingest_dedup_pass_1_by_source_sha(tmp_path):
         fm, _ = read_frontmatter(str(p))
         if fm.get("source-sha") == incoming_sha:
             hits.append(fm["paper-id"])
-    assert hits == ["vaswani-2017-attention"]
+    assert hits == ["vaswani2017attention"]
 
 
 def test_ingest_dedup_pass_2_by_identifiers(tmp_wiki):
     """Pass 2 dedup: identifier match → reuse paper-id."""
-    paper = tmp_wiki / "wiki/papers/vaswani-2017-attention.md"
+    paper = tmp_wiki / "wiki/papers/vaswani2017attention.md"
     write_frontmatter(
         str(paper),
         {
-            "paper-id": "vaswani-2017-attention",
+            "paper-id": "vaswani2017attention",
             "identifiers": {"arxiv": "1706.03762", "arxiv-version": "v3"},
         },
         "",
@@ -191,15 +191,15 @@ def test_ingest_dedup_pass_2_by_identifiers(tmp_wiki):
     found = find_existing_paper_by_identifiers(
         str(tmp_wiki), {"arxiv": "1706.03762v5"}
     )
-    assert found == "vaswani-2017-attention"
+    assert found == "vaswani2017attention"
 
 
 def test_collision_resolution_when_different_papers_produce_same_id(tmp_wiki):
-    """Two different papers both produce smith-2020-neural → -2, -3, ..."""
-    (tmp_wiki / "wiki/papers/smith-2020-neural.md").write_text("---\n---\n")
-    (tmp_wiki / "wiki/papers/smith-2020-neural-2.md").write_text("---\n---\n")
-    new_id = resolve_collision(str(tmp_wiki), "smith-2020-neural")
-    assert new_id == "smith-2020-neural-3"
+    """Two different papers both produce smith2020neural → 2, 3, ..."""
+    (tmp_wiki / "wiki/papers/smith2020neural.md").write_text("---\n---\n")
+    (tmp_wiki / "wiki/papers/smith2020neural2.md").write_text("---\n---\n")
+    new_id = resolve_collision(str(tmp_wiki), "smith2020neural")
+    assert new_id == "smith2020neural3"
 
 
 def test_lockfile_prevents_concurrent_ops(tmp_wiki):
@@ -225,9 +225,9 @@ def test_query_slug_is_deterministic_and_bounded():
 
 def test_paper_page_roundtrip(tmp_wiki):
     """A complete paper page's frontmatter roundtrips via read/write."""
-    paper_path = tmp_wiki / "wiki/papers/vaswani-2017-attention.md"
+    paper_path = tmp_wiki / "wiki/papers/vaswani2017attention.md"
     fm = {
-        "paper-id": "vaswani-2017-attention",
+        "paper-id": "vaswani2017attention",
         "citation-key": "vaswani2017attention",
         "type": "paper",
         "status": "read",
@@ -243,8 +243,8 @@ def test_paper_page_roundtrip(tmp_wiki):
         "identifiers": {"arxiv": "1706.03762", "doi": "10.xxx/yyy"},
         "aliases": [],
         "source-version": "arxiv-v5",
-        "bib-file": "raw/bib/vaswani-2017-attention.bib",
-        "extract": "raw/extracts/vaswani-2017-attention.md",
+        "bib-file": "raw/bib/vaswani2017attention.bib",
+        "extract": "raw/extracts/vaswani2017attention.md",
         "references-raw": ["Bahdanau 2014", "Cho 2014"],
         "cites": [],
         "tags": ["field/nlp", "method/attention", "year/2017", "venue/nips"],
@@ -291,8 +291,8 @@ def test_warning_callout_format_is_obsidian_compatible(tmp_wiki):
     from academic_wiki_lib.frontmatter import write_frontmatter, read_frontmatter
     page = tmp_wiki / "wiki/concepts/attention-complexity.md"
     body = (
-        "Attention is quadratic in sequence length per [[vaswani-2017-attention]].\n\n"
-        "> [!WARNING] Contradiction with [[shazeer-2019-fast]]\n"
+        "Attention is quadratic in sequence length per [[vaswani2017attention]].\n\n"
+        "> [!WARNING] Contradiction with [[shazeer2019fast]]\n"
         "> Vaswani et al. report O(n²), but Shazeer et al. report O(n log n) under their\n"
         "> factorized attention variant. Needs resolution.\n"
     )
@@ -301,7 +301,7 @@ def test_warning_callout_format_is_obsidian_compatible(tmp_wiki):
         "status": "active",
         "created": "2026-04-01",
         "updated": "2026-04-16",
-        "sources": ["vaswani-2017-attention", "shazeer-2019-fast"],
+        "sources": ["vaswani2017attention", "shazeer2019fast"],
         "tags": ["field/nlp"],
     }, body)
 
@@ -309,8 +309,8 @@ def test_warning_callout_format_is_obsidian_compatible(tmp_wiki):
     fm, body2 = read_frontmatter(str(page))
     assert "[!WARNING] Contradiction with" in body2
     # Both sources remain
-    assert "vaswani-2017-attention" in fm["sources"]
-    assert "shazeer-2019-fast" in fm["sources"]
+    assert "vaswani2017attention" in fm["sources"]
+    assert "shazeer2019fast" in fm["sources"]
 
 
 def test_aliases_field_roundtrips(tmp_wiki):
@@ -323,7 +323,7 @@ def test_aliases_field_roundtrips(tmp_wiki):
         "created": "2026-04-16",
         "updated": "2026-04-16",
         "aliases": ["attention", "soft-attention"],
-        "sources": ["vaswani-2017-attention"],
+        "sources": ["vaswani2017attention"],
         "tags": ["field/nlp"],
     }, "body\n")
     fm, _ = read_frontmatter(str(page))
