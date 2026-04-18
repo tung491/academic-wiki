@@ -49,12 +49,12 @@ def _first_meaningful_word(title: str) -> str:
 
 
 def generate_paper_id(lastname: str, year: int, title: str) -> str:
-    """Generate a paper-id per spec §5.2: <lastname>-<year>-<firstword>."""
+    """Generate a paper-id: <lastname><year><firstword> (no separators)."""
     ln = re.sub(r"[^a-z0-9]", "", _ascii_fold(lastname))
     if not ln:
         ln = "unknown"
     fw = _first_meaningful_word(title)
-    return f"{ln}-{year}-{fw}"
+    return f"{ln}{year}{fw}"
 
 
 def normalize_identifier(kind: str, value: str) -> tuple[str, str | None]:

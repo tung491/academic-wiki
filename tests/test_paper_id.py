@@ -10,47 +10,47 @@ from academic_wiki_lib.paper_id import (
 
 
 def test_basic_paper_id():
-    assert generate_paper_id("Vaswani", 2017, "Attention Is All You Need") == "vaswani-2017-attention"
+    assert generate_paper_id("Vaswani", 2017, "Attention Is All You Need") == "vaswani2017attention"
 
 
 def test_stop_word_in_title_dropped():
-    assert generate_paper_id("Smith", 2020, "The Future of AI") == "smith-2020-future"
+    assert generate_paper_id("Smith", 2020, "The Future of AI") == "smith2020future"
 
 
 def test_ascii_fold_in_lastname():
-    assert generate_paper_id("García", 2024, "Survey of RSMA") == "garcia-2024-survey"
+    assert generate_paper_id("García", 2024, "Survey of RSMA") == "garcia2024survey"
 
 
 def test_pure_numeric_first_word_skipped():
     """A pure numeric word is skipped (e.g., '1000' as a leading number)."""
-    assert generate_paper_id("Chen", 2023, "1000 Genomes Project") == "chen-2023-genomes"
+    assert generate_paper_id("Chen", 2023, "1000 Genomes Project") == "chen2023genomes"
 
 
 def test_alphanumeric_first_word_kept():
     """A leading digit-alpha compound like '5G' is kept — it's the distinguishing term."""
-    assert generate_paper_id("Chen", 2023, "5G Networks") == "chen-2023-5g"
-    assert generate_paper_id("Smith", 2024, "3D Printing Trends") == "smith-2024-3d"
+    assert generate_paper_id("Chen", 2023, "5G Networks") == "chen20235g"
+    assert generate_paper_id("Smith", 2024, "3D Printing Trends") == "smith20243d"
 
 
 def test_multiple_stop_words_skipped():
     """Spec §5.2: skip stop words a/an/the and numerals until finding first meaningful word."""
-    assert generate_paper_id("Jones", 2022, "A the of Framework for Deep Learning") == "jones-2022-framework"
+    assert generate_paper_id("Jones", 2022, "A the of Framework for Deep Learning") == "jones2022framework"
 
 
 def test_hyphenated_lastname():
-    assert generate_paper_id("García-Luna", 2024, "Foo Bar") == "garcialuna-2024-foo"
+    assert generate_paper_id("García-Luna", 2024, "Foo Bar") == "garcialuna2024foo"
 
 
 def test_empty_lastname_fallback():
     """Falling back when lastname yields no alphanumeric characters."""
     result = generate_paper_id("---", 2024, "Title Here")
-    assert "unknown" in result or "2024-title" in result
+    assert result == "unknown2024title"
 
 
 def test_empty_title_fallback():
     """When no meaningful word in title, use 'untitled' placeholder."""
     result = generate_paper_id("Smith", 2024, "A the of")
-    assert result == "smith-2024-untitled"
+    assert result == "smith2024untitled"
 
 
 def test_normalize_arxiv_strips_version():
@@ -170,7 +170,7 @@ def test_find_existing_paper_skips_malformed(tmp_wiki):
 
 def test_ascii_fold_nordic_germanic_letters():
     """ø, æ, ß etc. should fold to ASCII equivalents."""
-    assert generate_paper_id("Øster", 2024, "Foo Bar") == "oster-2024-foo"
-    assert generate_paper_id("Müller", 2024, "Baz") == "muller-2024-baz"
-    assert generate_paper_id("Straße", 2024, "Test") == "strasse-2024-test"
-    assert generate_paper_id("Æther", 2024, "Qux") == "aether-2024-qux"
+    assert generate_paper_id("Øster", 2024, "Foo Bar") == "oster2024foo"
+    assert generate_paper_id("Müller", 2024, "Baz") == "muller2024baz"
+    assert generate_paper_id("Straße", 2024, "Test") == "strasse2024test"
+    assert generate_paper_id("Æther", 2024, "Qux") == "aether2024qux"
