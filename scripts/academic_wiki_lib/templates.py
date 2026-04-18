@@ -665,7 +665,7 @@ Note: the lock is released by the directory being gone.
 
 _WORKSHOP_RE = re.compile(r"\bworkshop\b", re.IGNORECASE)
 _CONFERENCE_RE = re.compile(
-    r"\b(conference|symposium|proceedings|workshop on|congress)\b",
+    r"\b(conference|symposium|proceedings|congress)\b",
     re.IGNORECASE,
 )
 _JOURNAL_RE = re.compile(

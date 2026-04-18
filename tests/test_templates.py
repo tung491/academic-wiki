@@ -188,3 +188,9 @@ def test_guess_venue_type_empty_raises():
         guess_venue_type("")
     with pytest.raises(ValueError):
         guess_venue_type("   ")
+
+
+def test_guess_venue_type_workshop_beats_conference():
+    """Workshop keyword must win even when the name also contains conference keywords."""
+    assert guess_venue_type("ICML Workshop on Robustness") == "workshop"
+    assert guess_venue_type("NeurIPS Workshop co-located with the Conference") == "workshop"
