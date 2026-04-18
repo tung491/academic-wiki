@@ -104,9 +104,53 @@ Use `"$NAME"` and `"$WIKI_ROOT"` in all subsequent shell commands to handle name
     Zotero BibTeX export (optional): File → Export → BibTeX → save to raw/bib/
     ```
 
-## `ingest <path|id|url>`
+## `ingest [<path|id|url>]`
 
 Save a source to `raw/` and assign a canonical `paper-id`. Does NOT create wiki pages — use `compile` for that.
+
+### Modes
+
+- **Explicit:** `ingest <path|id|url>` — ingest a single source (file path, directory, arXiv ID, DOI, URL).
+- **Batch:** `ingest` with no argument — scan `raw/papers/*/` for unprocessed clipper directories and ingest each.
+
+### Batch scan mode (no argument)
+
+When called with no argument:
+
+1. Walk `raw/papers/*/` for directories containing ≥1 `.md` file.
+2. Filter to unprocessed: no `paper-id` in the `.md` frontmatter, OR `paper-id` present but `extract-status` absent/not `complete` (crash recovery).
+3. Acquire the lock ONCE before the loop (not per-directory). Set the EXIT trap once.
+4. Process each directory sequentially using the clipper flow below. Papers processed earlier in the batch are visible to later dedup scans (their `paper-id` is already written).
+5. Release the lock after the loop completes.
+6. Print summary: `Ingested N papers from raw/papers/`.
+
+### Clipper directory ingest
+
+When the input is a directory (explicit path or from batch scan) containing `.md` + optional `images/`:
+
+1. Find the `.md` file inside the directory (the clipper writes exactly one).
+2. Read the existing frontmatter with `read_frontmatter()` — do NOT overwrite user/clipper fields (`title`, `doi`, `date`, `venue`, etc.).
+3. Extract metadata from the frontmatter + body, run the standard metadata pipeline (first-author → year → first-word), generate `paper-id` (new no-hyphen format).
+4. Run dedup passes (byte-level + identifier-level) — scoped over both `raw/extracts/` and `raw/papers/*/`.
+5. Merge missing fields into the frontmatter and write back with `write_frontmatter()`:
+   - `paper-id`
+   - `source-sha`
+   - `source-type: clipper-md`
+   - `source-url` — `https://doi.org/<doi>` if DOI present; else URL from clipper frontmatter if present; else `null`
+   - `extracted-at` (ISO-8601 UTC)
+   - `extract-status: complete`
+   - `extractor: obsidian-clipper`
+   - `ocr-used: false`
+   - `extract-warnings: []`
+6. If `images/` subdirectory exists, create a **relative** symlink: `ln -sr "$WIKI_ROOT/raw/papers/<clipper-dir>/images" "$WIKI_ROOT/raw/figures/<paperid>"` (relative so it survives vault relocation).
+7. Leave image references (`![[fig1.png]]`) in the body untouched — Obsidian resolves them vault-wide.
+8. Stub BibTeX to `raw/bib/<paperid>.bib` as usual.
+9. Log + commit.
+
+**Clipper differences from standard ingest:**
+- No `raw/extracts/<paperid>.md` is created — the clipper `.md` IS the extract.
+- No `raw/papers/<paperid>.*` copy — the clipper directory is the canonical source.
+- Figures are symlinked, not copied.
 
 ### Setup variables
 
@@ -147,7 +191,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
     "
     ```
 
-4. **Dedup pass 1 (byte-level):** scan existing `raw/extracts/*.md` frontmatter for a matching `source-sha` field. If found, release lock, print `This exact source was already ingested as <existing-paper-id>. Skipping.` and exit.
+4. **Dedup pass 1 (byte-level):** scan BOTH `raw/extracts/*.md` AND `raw/papers/*/` clipper `.md` files for a matching `source-sha` field in frontmatter. If found, release lock, print `This exact source was already ingested as <existing-paper-id>. Skipping.` and exit.
 
 5. **Extract metadata** from handler output + source content:
    - First-author last name (ASCII-folded, lowercased: `García` → `garcia`)
@@ -182,7 +226,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
     print(pid)
     "
     ```
-    Format: `<lastname>-<year>-<firstword>`. If already taken by a different paper (different identifiers), append `-2`, `-3`, ... until unique.
+    Format: `<lastname><year><firstword>` (no separators). If already taken by a different paper (different identifiers), append `2`, `3`, ... directly (no separator) until unique. `resolve_collision()` scans both `wiki/papers/*.md` filenames AND `paper-id` values in clipper `.md` frontmatter under `raw/papers/*/`.
 
 8. **Handle versions** (if dedup pass 2 matched an existing paper): if the incoming `source-version` differs from the existing paper's `source-version`, this is a new version of the same paper:
    - Save the new source file and extract with the same `paper-id` basename, with `source-version: arxiv-v5` (or appropriate version) in the extract frontmatter.
@@ -197,7 +241,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
    If the failure is partial (e.g., year known but author unknown), still use the fallback — do NOT synthesize a partial `paper-id`.
 
    Fallback action:
-   - `paper-id` = `unknown-<current-year>-<filename-slug>`
+   - `paper-id` = `unknown<currentyear><filenameslug>` (no separators)
    - Set `metadata-incomplete: true` in the extract frontmatter
    - Include whatever metadata WAS extractable in the extract frontmatter (don't drop year if that was the only field found)
    - Lint will surface this for manual cleanup later
@@ -210,7 +254,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 11. **Write extract frontmatter** per spec §3.7. Required fields: `paper-id`, `source-path`, `source-sha`, `source-version`, `source-type`, `source-url`, `extractor`, `extractor-version`, `extracted-at` (ISO-8601 UTC), `ocr-used`, `extract-status`, `extract-warnings`.
 
-12. **BibTeX:** if the handler provided BibTeX (arXiv/DOI/publisher handlers usually can), save it verbatim to `raw/bib/<paper-id>.bib`. Otherwise stub a minimal `@misc` entry from the extracted metadata, with a comment `% bib-incomplete: true` at the top (lint will flag it). The BibTeX `@key` field uses `citation-key` (BibTeX-native style, no hyphens: `vaswani2017attention`), not `paper-id`.
+12. **BibTeX:** if the handler provided BibTeX (arXiv/DOI/publisher handlers usually can), save it verbatim to `raw/bib/<paper-id>.bib`. Otherwise stub a minimal `@misc` entry from the extracted metadata, with a comment `% bib-incomplete: true` at the top (lint will flag it). The BibTeX `@key` field uses `paper-id` directly (e.g., `vaswani2017attention`).
 
 13. **Append to `log.md`:**
     ```
@@ -256,7 +300,7 @@ This fires on any exit (normal or error). The explicit release in step 15 is not
 
 ## `compile [<paper-id>] [--paper-only]`
 
-Wave 1 ships **paper-only tier** as default. Creates/updates `wiki/papers/<paper-id>.md` from `raw/extracts/<paper-id>.md`. Does NOT do entity extraction, cross-paper synthesis, or backlink audit — those arrive in Wave 2.
+Default compile runs the full pipeline: paper pages + entity extraction + cites resolution + backlink audit + cross-paper candidate detection + index rebuild. `--paper-only` is an escape hatch that skips entity extraction through cross-paper detection (useful for a fast first pass on a new source).
 
 For detailed behavior see `references/compilation-guide.md`.
 
@@ -266,7 +310,7 @@ For detailed behavior see `references/compilation-guide.md`.
     PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
     WIKI_ROOT="<active-wiki-path>"
 
-### Steps (paper-only tier)
+### Steps
 
 1. **Acquire lockfile** (op=`compile`):
     ```bash
@@ -279,79 +323,66 @@ For detailed behavior see `references/compilation-guide.md`.
     ```
 
 2. **Identify sources to compile:**
-   - If `<paper-id>` given: just that one.
-   - Else: list `raw/extracts/*.md` (excluding `*.versions.yml`). For each, check whether `wiki/papers/<paper-id>.md` exists; if it does, compare the extract's `extracted-at` to the paper page's `updated:` — only re-compile if the extract is newer (source changed since last compile). Compile all sources that are new or updated.
+   - Call `find_all_extracts(wiki_root)` from `academic_wiki_lib.wiki_paths` — it returns `(paper_id, md_path)` tuples from BOTH `raw/extracts/*.md` and `raw/papers/*/` clipper directories, sorted alphabetically by paper_id.
+   - If `<paper-id>` given: filter the list to that one.
+   - Else: filter out sources already compiled. A source is "already compiled" if `wiki/papers/<paper-id>.md` exists AND its `updated:` frontmatter is ≥ the extract's `extracted-at`.
    - If nothing to compile: print `All sources already compiled. Nothing to do.` Release lock, exit.
 
-3. **For each source:**
-    a. Read `raw/extracts/<paper-id>.md` via `read_frontmatter`. Keep the body (the actual paper text/LaTeX).
+3. **Per-source (all modes):** for each `(paper_id, md_path)` tuple:
+    a. Read `md_path` via `read_frontmatter` — use the `md_path` from the tuple, do NOT reconstruct from `paper-id` (clipper extracts live under `raw/papers/<dir>/`, not `raw/extracts/`).
     b. Read `raw/notes/<paper-id>.md` if it exists.
-    c. Check if `wiki/papers/<paper-id>.md` already exists (update case) — if yes, read it and apply the update conflict policy (§3.6) during merge.
+    c. Check if `wiki/papers/<paper-id>.md` already exists (update case) — if yes, apply the update conflict policy (§3.6) during merge.
     d. LLM generates body content: Metadata / Summary / Key Contributions / Methods / Results / Claims / User Notes / See Also sections.
     e. LLM extracts `references-raw: [...]` from the bibliography section of the extract.
     f. LLM infers `field/*`, `subfield/*`, `method/*` tags from content. `year/<YYYY>` and `venue/<slug>` from frontmatter.
     g. Populate `authors:` as list of `{slug: <author-slug>, name: <human-name>}` objects. Generate each slug via `academic_wiki_lib.slug.make_slug`.
     h. Write `wiki/papers/<paper-id>.md` via `academic_wiki_lib.frontmatter.write_frontmatter`.
 
-4. **Update `wiki/index.md`:** append under a `## Uncategorized` heading (field tagging kicks in properly in Wave 2). Format: `- [[<paper-id>]] — <title> (YYYY-MM-DD)`. Avoid duplicates (check if the line already exists).
-
-5. **Append to `log.md`:** `## [YYYY-MM-DD] compile | N paper pages created/updated` with a body line listing the paper-ids.
-
-6. **Commit inside the wiki's own repo:**
-    ```bash
-    git -C "$WIKI_ROOT" add .
-    git -C "$WIKI_ROOT" commit -m "compile: paper-only <N> papers: <first-paper-id>, ..."
-    ```
-
-7. **Release lock** (trap handles this on exit).
-
-### Full tier (Wave 2 — default after Wave 1 is stable; Wave 1 tier remains available via `--paper-only`)
-
-All paper-only tier steps, PLUS:
-
-1. **Entity extraction:** after the paper page is written, scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
+4. **Entity extraction** (skipped with `--paper-only`): scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
     a. Generate a slug via `academic_wiki_lib.slug.make_slug(<entity-name>)`.
     b. Check if `wiki/<entity-type>s/<slug>.md` exists (where entity-type is `concept`, `method`, or `open-problem`).
-    c. If yes: apply the update conflict policy (§3.6 — see "Update conflict policy" subsection below).
-    d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags: [field/..., subfield/...]` (inherit from the paper's tags), and `status:` set per the entity type's allowed values:
+    c. If yes: apply the update conflict policy (§3.6).
+    d. If no: create using the appropriate §3 template. Populate `sources: [<paper-id>]`, `tags:` inherited from the paper's tags, and `status:`:
        - concept: `active`
        - method: `active`
-       - open-problem: `open` (default; override to `resolved` only if the paper explicitly provides a resolution)
-       - result: `preliminary` (default; promote to `replicated`/`contested` later via cross-paper candidate detection)
-       - claim: `established` (default; promote to `contested`/`fringe` only if other papers push back)
-    e. Add `[[wikilinks]]` to the new entity pages in the paper's Methods/Claims/Summary sections as appropriate.
+       - open-problem: `open` (override to `resolved` only if the paper explicitly resolves)
+       - result: `preliminary`
+       - claim: `established`
+    e. Add `[[wikilinks]]` to the new entity pages in the paper's Methods/Claims/Summary sections.
 
-2. **`cites:` resolution:** for each entry in the paper's `references-raw: [...]`:
-    a. Attempt to fuzzy-match the reference against existing paper pages by title + first-author + year (LLM judgment; loose string match + semantic verification).
-    b. If a match is found, append its paper-id to `cites: [...]`.
+5. **`cites:` resolution** (skipped with `--paper-only`): for each entry in the paper's `references-raw: [...]`:
+    a. Fuzzy-match against existing paper pages by title + first-author + year.
+    b. If matched, append its paper-id to `cites: [...]`.
     c. Unmatched entries stay in `references-raw:` only and surface in lint's "candidate new ingests" list.
 
-3. **Backlink audit with ≥2-word slug allowlist** — prevent over-linking of common words:
-    a. For each newly-created entity-page slug, run:
+6. **Backlink audit with ≥2-word slug allowlist** (skipped with `--paper-only`) — prevents over-linking of common words:
+    a. For each newly-created entity-page slug:
         ```bash
         rg -l -n --fixed-strings "<slug-with-hyphens-replaced-by-space>" "$WIKI_ROOT/wiki/"
         ```
-    b. For each matching page, only insert `[[<slug>]]` if EITHER:
-       - The slug is ≥2 hyphen-separated words (e.g., `attention-mechanism`, `rate-splitting-multiple-access`), OR
-       - The match appears in a noun phrase that the LLM recognizes as a proper named entity (e.g., in prose like "the Transformer architecture" where `transformer` is a single-word slug but a proper name).
-    c. Skip insertion for single-word slugs like `attention`, `method`, `training` unless rule 3b.2 applies.
-    d. Commit backlink additions together with the entity pages in the same git commit as the compile.
+    b. Only insert `[[<slug>]]` if EITHER:
+       - The slug is ≥2 hyphen-separated words (e.g., `attention-mechanism`), OR
+       - The match appears in a noun phrase recognized as a proper named entity.
+    c. Skip insertion for single-word slugs like `attention`, `method`, `training` unless rule 6b.2 applies.
 
-4. **Cross-paper candidate detection** (per `references/promotion-rules.md`): for each claim/result drafted in the paper page, search for semantically equivalent claims/results in other paper pages. When ≥1 equivalent found, append a candidate entry to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`. **Do NOT silently promote** — the user reviews and accepts via query or future `promote` command.
+7. **Cross-paper candidate detection** (skipped with `--paper-only`, per `references/promotion-rules.md`): for each claim/result drafted in the paper page, search for semantically equivalent claims/results in other paper pages. When ≥1 equivalent found, append a candidate entry to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`. **Do NOT silently promote.**
 
-5. **Index update (replacing paper-only Uncategorized):** rewrite `wiki/index.md` with sections by `field/*` tag. Each paper gets listed under its primary field (if multiple, listed under each).
+8. **Update `wiki/index.md`:**
+   - Full mode: rewrite with sections by `field/*` tag. Each paper gets listed under its primary field(s).
+   - `--paper-only`: append under a `## Uncategorized` heading. Format: `- [[<paper-id>]] — <title> (YYYY-MM-DD)`. Avoid duplicates.
 
+   Example (full mode):
     ```markdown
     # academic Wiki Index
 
     Last updated: YYYY-MM-DD
 
     ## field/wireless-comms
-    - [[vaswani-2017-attention]] — Attention Is All You Need (2026-04-16)
-    - [[chen-2023-5g]] — 5G Networks Survey (2026-04-17)
+    - [[vaswani2017attention]] — Attention Is All You Need (2026-04-16)
+    - [[chen20235g]] — 5G Networks Survey (2026-04-17)
 
     ## field/nlp
-    - [[vaswani-2017-attention]] — Attention Is All You Need (2026-04-16)
+    - [[vaswani2017attention]] — Attention Is All You Need (2026-04-16)
 
     ## concepts
     - [[attention-mechanism]] — The attention mechanism (2026-04-16)
@@ -360,7 +391,16 @@ All paper-only tier steps, PLUS:
     - [[rsma]] — Rate-Splitting Multiple Access (2026-04-17)
     ```
 
-6. Log + commit + qmd re-embed per paper-only flow (unchanged).
+9. **Append to `log.md`:** `## [YYYY-MM-DD] compile | N paper pages created/updated` with a body line listing the paper-ids.
+
+10. **Commit inside the wiki's own repo:**
+    ```bash
+    git -C "$WIKI_ROOT" add .
+    git -C "$WIKI_ROOT" commit -m "compile: <N> papers: <first-paper-id>, ..."
+    ```
+    Use `compile: paper-only <N> papers: ...` when `--paper-only` was set.
+
+11. **Release lock** (trap handles this on exit).
 
 ### Update conflict policy (applies to every wiki page updated by compile)
 
@@ -379,11 +419,11 @@ Per spec §3.6. Compile reaches this flow whenever a newly-ingested paper produc
 6. **Bump `updated:` frontmatter** to today's date.
 7. **Do not change `created:`** — it reflects first creation, never re-bumps.
 8. **Aliases:** if a rename/merge happens during update (unusual), add the former slug to the target page's `aliases: []` list. Lint resolves `[[old-slug]]` via alias lookup.
-9. **Log the merge** — the compile commit message should summarize: `compile: merged <new-paper-id> into <N> existing pages` (replaces the default `compile: paper-only ...` or `compile: full ...` subject when merging into existing pages).
+9. **Log the merge** — the compile commit message should summarize: `compile: merged <new-paper-id> into <N> existing pages` (replaces the default `compile: <N> papers: ...` subject when merging into existing pages).
 
 ## `query <question>`
 
-Answer a question against the wiki's paper pages (and, in Wave 2+, concept/method/etc. pages). Files the answer for future reuse.
+Answer a question against the wiki's paper pages and entity pages (concepts, methods, etc.). Files the answer for future reuse.
 
 ### Setup variables
 
@@ -416,7 +456,7 @@ Query is mostly read-only. It only takes the lock if the user accepts the promot
     ```
    Parse JSON output for path/score/snippet per hit.
 
-4. **Read all candidate paper pages.** Follow one level of wikilinks if the linked target has frontmatter `type: paper` (or any existing wiki page in Wave 1 — concept/method/etc. don't exist yet).
+4. **Read all candidate paper pages.** Follow one level of wikilinks if the linked target is any existing wiki page (paper, concept, method, open-problem, result, claim).
 
 5. **Synthesize answer:**
    - Default: **prose** with inline `[[paper-id]]` wikilinks as citations. Every factual claim must be attributed.
@@ -467,13 +507,6 @@ Query is mostly read-only. It only takes the lock if the user accepts the promot
 - Phase 1 returns hits with uniform `score: 1.0` — no real ranking, LLM uses order of reading.
 - Phase 2 (qmd) returns hits with qmd's BM25+vector scores.
 - Controller/LLM should read the top candidates first; stop adding more when confident there's enough evidence for a thorough answer. Typical: 5-15 paper pages per query.
-
-### Wave 2+ extensions
-
-Once Wave 2 compile creates concept/method/open-problem pages, query extends:
-- Candidate set includes non-paper entity pages.
-- Wikilink-following can cross into entity pages.
-- Promotion prompt offers all entity types (already listed above).
 
 ## `lint [--fix-dead-links] [--suggest-backlinks] [--with-suggestions]`
 
@@ -638,7 +671,7 @@ At least one of `--project`, `--field`, `--tag`, `--query`, `--keys`, `--since` 
 - **For a field-scoped review:** `/academic-wiki:wiki export-bibtex --field nlp --since 2024-01-01`
   Only papers tagged `field/nlp` ingested since 2024-01-01.
 
-- **For an ad-hoc set:** `/academic-wiki:wiki export-bibtex --keys vaswani-2017-attention,bahdanau-2014-neural --label icml-rebuttal`
+- **For an ad-hoc set:** `/academic-wiki:wiki export-bibtex --keys vaswani2017attention,bahdanau2014neural --label icml-rebuttal`
   Explicit paper-id list + custom label.
 
 ### `--query` vs `--keys`

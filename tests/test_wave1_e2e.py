@@ -228,7 +228,6 @@ def test_paper_page_roundtrip(tmp_wiki):
     paper_path = tmp_wiki / "wiki/papers/vaswani2017attention.md"
     fm = {
         "paper-id": "vaswani2017attention",
-        "citation-key": "vaswani2017attention",
         "type": "paper",
         "status": "read",
         "created": "2026-04-16",

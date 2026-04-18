@@ -1,6 +1,6 @@
-# Promotion Rules (Wave 2)
+# Promotion Rules
 
-In Wave 2, `compile` detects cross-paper claim/result candidates but **does not auto-promote**. Candidates are written to `outputs/reports/YYYY-MM-DD-promotion-candidates.md` for explicit user action.
+Default `compile` detects cross-paper claim/result candidates but **does not auto-promote**. Candidates are written to `outputs/reports/YYYY-MM-DD-promotion-candidates.md` for explicit user action. This step is skipped when `compile --paper-only` is used.
 
 ## Detection heuristic
 
@@ -51,8 +51,8 @@ When the user accepts a candidate (via `query` promotion prompt or a future `pro
 5. Append to `log.md`: `## [YYYY-MM-DD] promote | <slug> to claim|result`.
 6. Commit in the wiki's own git repo.
 
-## Non-goals for Wave 2
+## Non-goals
 
 - Automatic promotion — NEVER. Every promotion requires explicit user action.
 - Automatic merging of "close-but-not-equivalent" candidates — the threshold is strict semantic equivalence.
-- Retroactive promotion of claims/results that exist in the paper bodies before Wave 2 rollout — detection only fires on newly-compiled papers. Users can trigger detection manually by re-compiling.
+- Retroactive promotion of claims/results that exist in the paper bodies from prior compile runs — detection only fires on newly-compiled papers. Users can trigger detection manually by re-compiling.

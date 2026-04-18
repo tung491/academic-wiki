@@ -656,7 +656,7 @@ Note: the lock is released by the directory being gone.
 | **Extract exists, paper page missing** | Treat as uncompiled; next `compile` picks up. |
 | **Paper page exists, extract missing** | Lint warning: re-run ingest on the source. |
 | **Invalid `cites:` key** | Lint: "candidate new ingests"; do not auto-ingest. |
-| **`compile` targets non-existent paper-id** | Abort: `No extract found at raw/extracts/<paper-id>.md. Did you run wiki ingest first?` |
+| **`compile` targets non-existent paper-id** | Abort: `No extract found for <paper-id>. Did you run wiki ingest first?` |
 | **Snapshot precondition fails** (uncommitted changes) | Abort with a list of uncommitted files. User commits and retries. |
 | **Dead wikilink** | Flag with context in lint; do not auto-stub. Use `lint --fix-dead-links` for an LLM-assisted stub pass. |
 | **Version drift** (newer version ingested but paper page not updated) | Lint warning: paper page `identifiers.arxiv-version` behind latest version in `raw/extracts/<paper-id>.versions.yml`. |
