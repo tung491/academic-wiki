@@ -1,44 +1,62 @@
 # Compilation Guide
 
-## Paper-only tier (Wave 1 default)
+Compile reads ingested extracts and produces wiki pages. Default runs the full pipeline;
+`--paper-only` skips entity extraction through cross-paper detection.
 
-The paper-only tier is the safe starting point. It produces paper pages from raw extracts WITHOUT:
-- Creating entity pages (concept/method/open-problem)
-- Running cross-paper synthesis
-- Resolving `cites:` (stays empty; `references-raw:` holds verbatim bibliography)
-- Running backlink audit
+## Source discovery
 
-### Per-source steps
+Uses `academic_wiki_lib.wiki_paths.find_all_extracts(wiki_root)` which scans both:
+- `raw/extracts/*.md` (standard ingest — DOI/arXiv/PDF sources)
+- `raw/papers/*/` clipper directories (`.md` files with `paper-id` in frontmatter)
+
+Returns `(paper_id, md_path)` tuples sorted alphabetically by `paper_id` for deterministic ordering. Compile must use the `md_path` from the tuple to read the extract — do NOT construct a path from `paper-id`, since clipper extracts live under `raw/papers/<dir>/` not `raw/extracts/`.
+
+## Per-source steps (all modes)
 
 For each paper-id to compile:
 
-1. Read `raw/extracts/<paper-id>.md` via `academic_wiki_lib.frontmatter.read_frontmatter`. The frontmatter gives you `paper-id`, `source-path`, `source-sha`, `source-version`, `source-url`, and extractor metadata.
+1. Read the extract `.md` via `read_frontmatter` using the `md_path` from `find_all_extracts()`. The frontmatter gives you `paper-id`, `source-sha`, `source-version`, `source-url`, and extractor metadata.
 
-2. Read `raw/notes/<paper-id>.md` if it exists. This file is user-authored; treat as immutable source.
+2. Read `raw/notes/<paper-id>.md` if it exists. User-authored; treat as immutable.
 
-3. Determine paper `status:` — set to `read` if user notes are present and non-trivial (>200 chars), else `skimmed`. LLM may override based on content depth.
+3. Determine paper `status:` — `read` if user notes present and non-trivial (>200 chars), else `skimmed`. LLM may override based on content depth.
 
 4. Write (or update) `wiki/papers/<paper-id>.md` with:
-    - Full frontmatter per §3.1: `paper-id`, `citation-key` (derived BibTeX-style from author+year+firstword), `type: paper`, `status`, `created` (today if new), `updated` (today), `publication-date` (if known), `title`, `authors` (list of `{slug, name}` objects), `year`, `venue`, `identifiers`, `aliases: []`, `source-version`, `bib-file`, `extract`, `notes` (only if `raw/notes/<paper-id>.md` exists), `figures` (only if `raw/figures/<paper-id>/` is non-empty), `references-raw` (list of raw bibliography strings), `cites: []` (empty in Wave 1), `tags`.
-    - Body sections: `## Metadata` (inline one-liner: "X et al., YEAR, VENUE. [arXiv|DOI|URL](...) | [PDF](...)"), `## Summary` (LLM-synthesized one-paragraph synopsis), `## Key Contributions` (bullet list), `## Methods` (prose with inline methods), `## Results` (key findings; cross-paper results will be promoted later in Wave 2), `## Claims` (paper's main assertions), `## User Notes` (link-in and summarize `raw/notes/<paper-id>.md` or print `_No user notes filed._`), `## See Also` (links to related wiki pages).
+    - Full frontmatter per §3.1: `paper-id`, `type: paper`, `status`, `created` (today if new), `updated` (today), `publication-date` (if known), `title`, `authors` (list of `{slug, name}` objects), `year`, `venue`, `identifiers`, `aliases: []`, `source-version`, `bib-file`, `extract`, `notes` (only if `raw/notes/<paper-id>.md` exists), `figures` (only if `raw/figures/<paper-id>/` is non-empty), `references-raw` (list of raw bibliography strings), `cites: []` (empty in `--paper-only` mode; resolved in full mode), `tags`.
+    - Body sections: `## Metadata` (inline one-liner), `## Summary`, `## Key Contributions`, `## Methods`, `## Results`, `## Claims`, `## User Notes`, `## See Also`.
 
 5. Extract bibliography from the extract body and populate `references-raw: [...]` — verbatim strings.
 
-### Update conflict policy
+## Additional steps (full mode only — skipped by `--paper-only`)
 
-When `compile` touches an existing page (re-compiled paper or updated entity page), see the "Update conflict policy" subsection in `SKILL.md`'s `compile` section for the unified rules.
+6. **Entity extraction:** scan the extract body for concepts, methods, and open-problems. For each:
+    - Generate slug via `make_slug(<entity-name>)`.
+    - Check if `wiki/<entity-type>s/<slug>.md` exists; if yes apply the update conflict policy; if no, create using the appropriate §3 template.
+    - Default `status:` values: concept→`active`, method→`active`, open-problem→`open`, result→`preliminary`, claim→`established`.
+    - Add `[[wikilinks]]` in the paper's Methods/Claims/Summary sections.
 
-Key principle: preserve prior content, append new evidence, flag contradictions with `[!WARNING]` callouts, never replace without provenance, bump `updated:`.
+7. **`cites:` resolution:** for each `references-raw:` entry, LLM fuzzy-matches by title + first-author + year against existing paper pages. Matches populate `cites: [...]`. Unmatched entries remain in `references-raw:` only and surface in lint as candidate new ingests.
 
-### What NOT to do in paper-only tier (deferred to Wave 2)
+8. **Backlink audit with ≥2-word slug allowlist:** use `rg` to find mentions of entity slugs across wiki files; insert `[[wikilink]]` only when: (a) slug is ≥2 hyphen-separated words (e.g., `attention-mechanism`), OR (b) match appears in a proper-named-entity noun phrase. Single-word slugs like `attention` are never auto-linked.
 
-- Do NOT create `wiki/concepts/`, `wiki/methods/`, `wiki/open-problems/`, `wiki/claims/`, `wiki/results/` entries.
-- Do NOT fuzzy-match claims/results across papers.
-- Do NOT resolve `cites:` (leave empty).
-- Do NOT run grep-based backlink audit.
+9. **Cross-paper candidate detection** (non-destructive): LLM compares new paper's claims/results against existing paper pages by semantic equivalence. Candidates written to `outputs/reports/YYYY-MM-DD-promotion-candidates.md`. Contradicting quantitative findings get a `**Contradiction, not equivalence**` flag. NO silent auto-promotion.
 
-Wave 2 lifts these restrictions.
+## Shared final steps (all modes)
 
-## Full tier (Wave 2)
+10. **Update `wiki/index.md`:** full mode rebuilds by `field/*` tag; `--paper-only` appends under a `## Uncategorized` heading. Avoid duplicates.
 
-[Stub — filled in during Wave 2 Task 2.1. Will add entity extraction, cites resolution, backlink audit with ≥2-word allowlist, cross-paper candidate detection (writing to `outputs/reports/YYYY-MM-DD-promotion-candidates.md` — NOT silent auto-promote).]
+11. **Log + commit + release lock.**
+
+## Update conflict policy
+
+Applies whenever compile touches an existing page (re-compiled paper or updated entity page).
+
+Key principles:
+1. **Preserve prior claims** — existing assertions are not deleted by a new source alone.
+2. **Append new evidence** — add the new paper-id to `sources:` (or `cites:` for paper pages). Incorporate new content in a clearly attributed paragraph or section.
+3. **Flag contradictions inline** — insert `> [!WARNING] Contradiction with [[other-paper-id]]` Obsidian callouts at the point of disagreement. Never silently overwrite either side.
+4. **Never replace without provenance** — every material claim must trace to ≥1 `paper-id` in `sources:`. Unattributable claims are dropped OR marked `status: stale`.
+5. **Bump `updated:`** frontmatter to today.
+6. **Do not change `created:`** — it reflects first creation, never re-bumps.
+7. **Aliases:** if a rename/merge happens during update, add the former slug to the target page's `aliases: []`. Lint resolves `[[old-slug]]` via alias lookup.
+8. **Log the merge** — commit message summarizes: `compile: merged <new-paper-id> into <N> existing pages`.

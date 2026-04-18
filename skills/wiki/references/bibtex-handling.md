@@ -16,7 +16,7 @@ Example real entry:
 }
 ```
 
-The `@key` field inside the bib is the **citation-key** (BibTeX-native style, `vaswani2017attention`). This is distinct from the `paper-id` (hyphenated, `vaswani-2017-attention`). The paper page frontmatter has both; `bib-file` uses paper-id as the basename.
+The `@key` field inside the bib is the **paper-id** (e.g., `vaswani2017attention`). This is the same identifier used everywhere — filenames, frontmatter, wikilinks, and BibTeX exports. The paper page frontmatter uses `bib-file: raw/bib/<paper-id>.bib` as the basename.
 
 ## Export flow
 

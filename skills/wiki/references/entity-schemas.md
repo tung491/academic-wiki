@@ -1,6 +1,6 @@
 # Entity Schemas (verbatim from spec §§3.1-3.6)
 
-Reference for `compile` (full tier, Wave 2). Verbatim from `docs/superpowers/specs/2026-04-16-academic-wiki-design.md`.
+Reference for `compile` (full tier, full mode). Verbatim from `docs/superpowers/specs/2026-04-16-academic-wiki-design.md`.
 
 ---
 
@@ -10,8 +10,7 @@ Reference for `compile` (full tier, Wave 2). Verbatim from `docs/superpowers/spe
 
 ```yaml
 ---
-paper-id: vaswani-2017-attention            # canonical internal ID (stable, never rewrites)
-citation-key: vaswani2017attention          # derived, used for BibTeX export; may change
+paper-id: vaswani2017attention            # canonical internal ID (stable, never rewrites)
 type: paper
 status: queued | skimmed | read | deep-read
 created: YYYY-MM-DD                         # first ingest date
@@ -34,10 +33,10 @@ relationships:                              # optional — relations to other pa
   preprint-of: null                         # paper-id of the journal version
   version-of: null                          # paper-id of the canonical work (if this is a specific version)
   supersedes: []                            # paper-ids this supersedes
-bib-file: raw/bib/vaswani-2017-attention.bib
-extract: raw/extracts/vaswani-2017-attention.md
-notes: raw/notes/vaswani-2017-attention.md  # optional — only if user wrote notes
-figures: raw/figures/vaswani-2017-attention/  # optional
+bib-file: raw/bib/vaswani2017attention.bib
+extract: raw/extracts/vaswani2017attention.md
+notes: raw/notes/vaswani2017attention.md  # optional — only if user wrote notes
+figures: raw/figures/vaswani2017attention/  # optional
 references-raw:                             # unresolved bibliography (verbatim from paper)
   - "Bahdanau, D. et al. 'Neural Machine Translation by Jointly Learning to Align and Translate.' 2014."
   - "Cho, K. et al. 'Learning Phrase Representations...' 2014."
@@ -51,12 +50,11 @@ tags: [field/nlp, method/attention, year/2017, venue/nips]
 Body sections: `Metadata` / `Summary` / `Key Contributions` / `Methods` / `Results` / `Claims` / `User Notes` / `See Also`. User-notes section is auto-filled from `raw/notes/<paper-id>.md` if present.
 
 Notes on the identity model:
-- `paper-id` is generated on first ingest (see §5.2). Format mirrors the BibTeX key style for readability but is explicitly hyphen-separated to distinguish it from `citation-key`: `<lastname>-<year>-<firstword>`.
-- `citation-key` (BibTeX-native, no hyphens: `vaswani2017attention`) is a derived export field. If metadata is corrected later, `citation-key` updates without renaming files.
+- `paper-id` is generated on first ingest (see §5.2). Format: `<lastname><year><firstword>` (no separators, matches BibTeX `@key` style). Collision suffix: `2`, `3`, ... appended directly.
 - `identifiers:` is the dedup key. Ingest checks all existing papers' `identifiers:` against the incoming source — a match on any non-empty identifier (`doi`, `arxiv`, `url`, or `source-sha`) means the paper already exists; ingest merges new identifiers into the existing record instead of creating a duplicate.
 - `aliases:` records historical `paper-id` values if the canonical id is ever renamed (e.g., metadata correction changes the first author). Wikilinks to the old id still resolve via alias lookup during lint.
 
-Non-paper entities use `paper-id` values (not `citation-key`) in all reference fields like `sources:`, `supports:`, `evidence-for:`, etc.
+All internal references (`sources:`, `supports:`, `evidence-for:`, etc.) use `paper-id` values.
 
 **concept** — `wiki/concepts/<slug>.md`
 
@@ -66,7 +64,7 @@ type: concept
 status: active | stale
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [vaswani-2017-attention, ...]            # paper-ids
+sources: [vaswani2017attention, ...]            # paper-ids
 tags: [field/..., ...]
 ---
 ```
@@ -81,7 +79,7 @@ type: method
 status: active | deprecated | contested
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [paper-id-1, paper-id-2]
+sources: [paperid1, paperid2]
 related-methods: [other-method-slug]
 tags: [field/..., method/..., ...]
 ---
@@ -97,7 +95,7 @@ type: open-problem
 status: open | partially-resolved | resolved | disputed
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [paper-id-1, ...]
+sources: [paperid1, ...]
 resolved-by: paper-id                             # optional
 tags: [field/..., ...]
 ---
@@ -113,7 +111,7 @@ type: result
 status: replicated | contested | preliminary | unverified
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [paper-id-1, paper-id-2, ...]
+sources: [paperid1, paperid2, ...]
 refutes: [other-result-slug]
 supports: [claim-slug]
 tags: [field/..., method/..., ...]
@@ -130,7 +128,7 @@ type: claim
 status: established | contested | fringe | deprecated
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [paper-id-1, ...]
+sources: [paperid1, ...]
 evidence-for: [result-slug, ...]
 evidence-against: [result-slug, ...]
 tags: [field/..., ...]
@@ -154,7 +152,7 @@ orcid: 0000-...
 affiliation: ...
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-papers: [paper-id-1, paper-id-2, ...]
+papers: [paperid1, paperid2, ...]
 tags: [field/..., person]
 ---
 ```
@@ -169,7 +167,7 @@ slug: nips
 venue-type: conference | journal | workshop | preprint-server
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-papers: [paper-id-1, ...]
+papers: [paperid1, ...]
 tags: [field/...]
 ---
 ```
@@ -187,7 +185,7 @@ question: "<original question>"
 status: filed | promoted
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-sources: [paper-id-1, ...]
+sources: [paperid1, ...]
 tags: [field/...]
 ---
 ```
@@ -200,7 +198,7 @@ tags: [field/...]
    - `references-raw:` (paper pages only): the raw bibliography as captured from the source, unresolved.
    - `cites:` (paper pages only): the subset of `references-raw:` that has been resolved to `paper-id`s in the wiki. Every key in `cites:` must match an existing paper page; unmatched raw references stay only in `references-raw:` until their papers are ingested.
    - `sources:` (every non-paper entity): paper-ids that inform this page.
-2. **References are by `paper-id`, not `citation-key`.** `citation-key` is presentation-only; internal graph references are all `paper-id`.
+2. **All internal references use `paper-id`.** The same identifier is used in filenames, wikilinks, frontmatter `sources:`/`cites:`/`supports:`, and BibTeX `@key`.
 3. **Status fields are entity-specific.** Different entity types have different meaningful states.
 4. **`cited-by:` is never stored.** Dataview computes it on demand from `cites:` fields.
 5. **Result/claim pages exist only when cross-paper.** Single-paper results/claims stay inline in the paper page until promoted.
