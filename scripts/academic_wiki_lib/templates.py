@@ -5,6 +5,7 @@ will inline spec content with YAML braces (e.g., `authors: [{slug: x, name: Y}]`
 that would break f-string parsing.
 """
 from __future__ import annotations
+import re
 
 
 def all_subdirs() -> list[str]:
@@ -661,3 +662,39 @@ Note: the lock is released by the directory being gone.
 | **Dead wikilink** | Flag with context in lint; do not auto-stub. Use `lint --fix-dead-links` for an LLM-assisted stub pass. |
 | **Version drift** (newer version ingested but paper page not updated) | Lint warning: paper page `identifiers.arxiv-version` behind latest version in `raw/extracts/<paper-id>.versions.yml`. |
 """
+
+_WORKSHOP_RE = re.compile(r"\bworkshop\b", re.IGNORECASE)
+_CONFERENCE_RE = re.compile(
+    r"\b(conference|symposium|proceedings|workshop on|congress)\b",
+    re.IGNORECASE,
+)
+_JOURNAL_RE = re.compile(
+    r"\b(transactions|journal|letters|surveys|magazine|tutorials|nature|science|communications|review|cell|lancet|jama|"
+    r"physical review|acta|annals|bulletin)\b",
+    re.IGNORECASE,
+)
+_PREPRINT_RE = re.compile(
+    r"\b(arxiv|biorxiv|medrxiv|chemrxiv|ssrn|preprint server)\b",
+    re.IGNORECASE,
+)
+
+
+def guess_venue_type(raw_venue: str) -> str:
+    """Heuristic classification of a raw venue string.
+
+    Returns one of: "conference", "journal", "workshop", "preprint-server".
+    Defaults to "journal" when no keyword matches — journals are the most common
+    academic venue and are cheap to correct by hand when wrong.
+    """
+    if not raw_venue or not raw_venue.strip():
+        raise ValueError("Cannot classify empty venue string")
+
+    if _WORKSHOP_RE.search(raw_venue):
+        return "workshop"
+    if _PREPRINT_RE.search(raw_venue):
+        return "preprint-server"
+    if _CONFERENCE_RE.search(raw_venue):
+        return "conference"
+    if _JOURNAL_RE.search(raw_venue):
+        return "journal"
+    return "journal"

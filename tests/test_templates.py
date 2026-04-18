@@ -6,6 +6,7 @@ from academic_wiki_lib.templates import (
     claude_md,
     qmd_yml,
     all_subdirs,
+    guess_venue_type,
 )
 
 
@@ -151,3 +152,39 @@ def test_claude_md_line_count_after_additions():
     doc = claude_md("academic")
     # After citation-key removal and Wave terminology cleanup, expected ≥550 lines.
     assert doc.count("\n") >= 550, f"expected ≥550 lines, got {doc.count(chr(10))}"
+
+
+def test_guess_venue_type_journal_keywords():
+    assert guess_venue_type("IEEE Transactions on Networking") == "journal"
+    assert guess_venue_type("IEEE Communications Surveys & Tutorials") == "journal"
+    assert guess_venue_type("Nature Machine Intelligence") == "journal"
+    assert guess_venue_type("Computer Networks") == "journal"
+    assert guess_venue_type("IEEE Communications Letters") == "journal"
+
+
+def test_guess_venue_type_conference_keywords():
+    assert guess_venue_type("IEEE International Conference on Communications") == "conference"
+    assert guess_venue_type("ACM Symposium on Theory of Computing") == "conference"
+    assert guess_venue_type("Proceedings of NeurIPS 2024") == "conference"
+
+
+def test_guess_venue_type_workshop():
+    assert guess_venue_type("NeurIPS 2024 Workshop on Foundation Models") == "workshop"
+
+
+def test_guess_venue_type_preprint_server():
+    assert guess_venue_type("arXiv") == "preprint-server"
+    assert guess_venue_type("arXiv preprint") == "preprint-server"
+    assert guess_venue_type("bioRxiv") == "preprint-server"
+
+
+def test_guess_venue_type_default_is_journal():
+    assert guess_venue_type("Unknown Publication") == "journal"
+
+
+def test_guess_venue_type_empty_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        guess_venue_type("")
+    with pytest.raises(ValueError):
+        guess_venue_type("   ")
