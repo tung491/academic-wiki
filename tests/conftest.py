@@ -24,8 +24,8 @@ def tmp_wiki(tmp_path):
 def sample_paper_content():
     """A tiny paper extract for ingest/compile tests."""
     return """---
-paper-id: vaswani-2017-attention
-source-path: raw/papers/vaswani-2017-attention.pdf
+paper-id: vaswani2017attention
+source-path: raw/papers/vaswani2017attention.pdf
 source-sha: abc123
 source-type: pdf
 source-url: https://arxiv.org/abs/1706.03762
