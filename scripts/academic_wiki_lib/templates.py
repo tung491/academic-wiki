@@ -91,7 +91,7 @@ The wiki is **its own git repository** (nested inside the Obsidian vault), not p
 │   ├── claims/                       # cross-paper only
 │   ├── results/                      # cross-paper only
 │   ├── authors/                      # on demand
-│   ├── venues/                       # on demand
+│   ├── venues/                       # auto-created on compile
 │   └── queries/                      # filed query answers
 ├── outputs/
 │   ├── reports/                      # YYYY-MM-DD-lint.md
