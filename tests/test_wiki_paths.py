@@ -114,3 +114,66 @@ def test_list_wikis_rejects_directory_named_claude_md(tmp_path):
     (fake / "wiki").mkdir(parents=True)
     (fake / "CLAUDE.md").mkdir()
     assert list_wikis(str(base)) == []
+
+
+# ---------------------------------------------------------------------------
+# find_all_extracts
+# ---------------------------------------------------------------------------
+
+from academic_wiki_lib.wiki_paths import find_all_extracts
+
+
+def test_find_all_extracts_from_raw_extracts(tmp_wiki):
+    """Finds standard extracts in raw/extracts/."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    extract = tmp_wiki / "raw/extracts/vaswani2017attention.md"
+    write_frontmatter(str(extract), {"paper-id": "vaswani2017attention"}, "body")
+    result = find_all_extracts(str(tmp_wiki))
+    assert result == [("vaswani2017attention", str(extract))]
+
+
+def test_find_all_extracts_from_clipper_dirs(tmp_wiki):
+    """Finds clipper .md files in raw/papers/*/."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    clipper_dir = tmp_wiki / "raw/papers/Some_Paper_Dir"
+    clipper_dir.mkdir(parents=True)
+    clipper_md = clipper_dir / "Some_Paper.md"
+    write_frontmatter(str(clipper_md), {"paper-id": "smith2020survey"}, "body")
+    result = find_all_extracts(str(tmp_wiki))
+    assert result == [("smith2020survey", str(clipper_md))]
+
+
+def test_find_all_extracts_both_sources(tmp_wiki):
+    """Merges both raw/extracts/ and raw/papers/*/ sources, sorted by paper-id."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    e1 = tmp_wiki / "raw/extracts/vaswani2017attention.md"
+    write_frontmatter(str(e1), {"paper-id": "vaswani2017attention"}, "body")
+    clipper_dir = tmp_wiki / "raw/papers/Some_Dir"
+    clipper_dir.mkdir(parents=True)
+    e2 = clipper_dir / "Paper.md"
+    write_frontmatter(str(e2), {"paper-id": "chen2023wireless"}, "body")
+    result = find_all_extracts(str(tmp_wiki))
+    assert len(result) == 2
+    assert result[0][0] == "chen2023wireless"
+    assert result[1][0] == "vaswani2017attention"
+
+
+def test_find_all_extracts_skips_no_paper_id(tmp_wiki):
+    """Clipper .md without paper-id in frontmatter is skipped."""
+    clipper_dir = tmp_wiki / "raw/papers/Unprocessed_Dir"
+    clipper_dir.mkdir(parents=True)
+    (clipper_dir / "Paper.md").write_text("---\ntitle: Something\n---\nbody")
+    result = find_all_extracts(str(tmp_wiki))
+    assert result == []
+
+
+def test_find_all_extracts_skips_versions_yml(tmp_wiki):
+    """*.versions.yml files in raw/extracts/ must not be treated as extracts."""
+    (tmp_wiki / "raw/extracts/paper.versions.yml").write_text("- version: v1\n")
+    result = find_all_extracts(str(tmp_wiki))
+    assert result == []
+
+
+def test_find_all_extracts_empty_wiki(tmp_wiki):
+    result = find_all_extracts(str(tmp_wiki))
+    assert result == []
