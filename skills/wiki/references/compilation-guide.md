@@ -26,10 +26,10 @@ For each paper-id to compile:
     - Tags MUST include the deterministic pair `year/<YYYY>` + `venue/<slug>` derived from the extract frontmatter, in addition to any LLM-inferred `field/*`, `subfield/*`, `method/*` tags.
     - Body sections: `## Metadata` (inline one-liner), `## Summary`, `## Key Contributions`, `## Methods`, `## Results`, `## Claims`, `## User Notes`, `## See Also`.
 
-4b. **Venue page upsert** — after writing the paper page, ensure `wiki/venues/<venue-slug>.md` exists and includes this paper:
+4b. **Venue page upsert** (runs after step 4, before step 5) — after writing the paper page, ensure `wiki/venues/<venue-slug>.md` exists and includes this paper:
     - If the extract has no `venue:` field (missing or empty/whitespace), skip this step.
     - Compute `venue-type` via `academic_wiki_lib.templates.guess_venue_type(<raw-venue>)`.
-    - New: render with `academic_wiki_lib.templates.venue_md_stub(slug=..., name=<raw-venue>, venue_type=..., paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<today>)` and write the result to disk.
+    - New: render with `academic_wiki_lib.templates.venue_md_stub(slug=<venue-slug>, name=<raw-venue>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<today>)` and write the result to disk.
     - Existing: read with `academic_wiki_lib.frontmatter.read_frontmatter`, append `<paper-id>` to `papers:` (dedup, preserve order), union `field/*` into `tags:` (dedup, preserve order), bump `updated:`. Preserve `created:`, `name:`, `venue-type:`, `slug:` (the user may have corrected them). Write back with `academic_wiki_lib.frontmatter.write_frontmatter`.
     - Runs in ALL modes (default AND `--paper-only`) — venue pages are cheap and belong with the paper write.
 
