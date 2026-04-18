@@ -431,7 +431,7 @@ Do not silently overwrite either side of a contradiction. Lint collects and list
 
 ## Init Rules
 
-Scaffolds a new wiki at `~/ObsidianVault/03-Resources/<name>/` (default `academic`). The wiki is created as its own nested git repository.
+Scaffolds a new wiki at `~/Documents/Obsidian Vault/03-Resources/<name>/` (default `academic`). The wiki is created as its own nested git repository.
 
 1. Abort if target exists (suggest `remove <name>` first).
 2. Create full directory tree (§2.2).
@@ -633,7 +633,7 @@ Deletes a wiki and its nested git repo after confirmation.
 3. Confirm: `"This will permanently delete '<name>' AND its git history at <wiki-path>. Proceed? (y/n)"`.
 4. Remove qmd collection if present: `qmd collection remove <name>`.
 5. Remove the directory entirely: `rm -rf <wiki-path>` (the nested `.git/` goes with it).
-6. If the Obsidian vault is itself a git repo, commit the removal so the vault's git knows the directory is gone: `git -C ~/ObsidianVault commit -am "remove: <name> wiki"` (no-op if vault isn't a git repo).
+6. If the Obsidian vault is itself a git repo, commit the removal so the vault's git knows the directory is gone: `git -C ~/Documents/"Obsidian Vault" commit -am "remove: <name> wiki"` (no-op if vault isn't a git repo).
 
 Note: the lock is released by the directory being gone.
 
@@ -643,7 +643,7 @@ Note: the lock is released by the directory being gone.
 |---|---|
 | **Lockfile held** | Fail fast (see Lockfile Semantics). |
 | **Lockfile stale** (holding pid gone) | Warn, take the lock, continue. |
-| **No active wiki found** | List candidates in `~/ObsidianVault/03-Resources/*/wiki`. Default to `academic/` if present; else prompt. |
+| **No active wiki found** | List candidates in `~/Documents/Obsidian Vault/03-Resources/*/wiki`. Default to `academic/` if present; else prompt. |
 | **Duplicate source (`source-sha` match)** | Skip ingest; print the existing `paper-id`. |
 | **Duplicate paper (identifier match, different source-sha)** | Treat as new version of an existing paper; reuse `paper-id`, update `identifiers:`, store new source under the same id with `source-version:` distinguishing. |
 | **PDF has no extractable text** | Route to `ocr-papers-to-latex` with OCR mode; if still fails, save PDF as-is, set `extract-status: failed`, warn, don't block. |

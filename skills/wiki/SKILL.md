@@ -14,7 +14,7 @@ Persistent, compounding knowledge base for academic papers inside an Obsidian va
 
 ## Active Wiki Detection
 
-Walk up from `cwd` looking for a directory with both `CLAUDE.md` and a `wiki/` subfolder (via `academic_wiki_lib.wiki_paths.find_active_wiki`). If none found, list `~/ObsidianVault/03-Resources/*/wiki` via `academic_wiki_lib.wiki_paths.list_wikis` and prompt. Default to `academic/` if present.
+Walk up from `cwd` looking for a directory with both `CLAUDE.md` and a `wiki/` subfolder (via `academic_wiki_lib.wiki_paths.find_active_wiki`). If none found, list `~/Documents/Obsidian Vault/03-Resources/*/wiki` via `academic_wiki_lib.wiki_paths.list_wikis` and prompt. Default to `academic/` if present.
 
 ## Helper invocation
 
@@ -39,7 +39,7 @@ Default name: `academic`.
 Before running the steps below, set these shell variables and use them consistently (always quoted):
 
     NAME="<name>"                      # the wiki name (default "academic")
-    WIKI_ROOT="$HOME/ObsidianVault/03-Resources/$NAME"
+    WIKI_ROOT="$HOME/Documents/Obsidian Vault/03-Resources/$NAME"
 
 Use `"$NAME"` and `"$WIKI_ROOT"` in all subsequent shell commands to handle names with spaces or special characters safely.
 
@@ -68,15 +68,16 @@ Use `"$NAME"` and `"$WIKI_ROOT"` in all subsequent shell commands to handle name
       -- "$NAME" > "$WIKI_ROOT/wiki/index.md"
     # Similarly for LOG_MD, GITIGNORE, qmd_yml(NAME)
     ```
-6. Update the Obsidian vault's `.gitignore` (if `~/ObsidianVault/.git` exists) to exclude `03-Resources/"$NAME"/`:
+6. Update the Obsidian vault's `.gitignore` (if `~/Documents/Obsidian Vault/.git` exists) to exclude `03-Resources/"$NAME"/`:
     ```bash
-    if [[ -d "$HOME/ObsidianVault/.git" ]]; then
+    VAULT="$HOME/Documents/Obsidian Vault"
+    if [[ -d "$VAULT/.git" ]]; then
         LINE="03-Resources/$NAME/"
-        GITIGNORE="$HOME/ObsidianVault/.gitignore"
+        GITIGNORE="$VAULT/.gitignore"
         touch "$GITIGNORE"
         grep -Fxq "$LINE" "$GITIGNORE" || echo "$LINE" >> "$GITIGNORE"
     else
-        echo "Note: ~/ObsidianVault is not a git repo; skipped vault .gitignore update."
+        echo "Note: ~/Documents/Obsidian Vault is not a git repo; skipped vault .gitignore update."
     fi
     ```
 7. Initial commit inside the wiki's own repo:
@@ -154,7 +155,7 @@ When the input is a directory (explicit path or from batch scan) containing `.md
 
 ### Setup variables
 
-Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from cwd, or default to `~/ObsidianVault/03-Resources/academic`):
+Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from cwd, or default to `~/Documents/Obsidian Vault/03-Resources/academic`):
 
     PY=~/.venv/bin/python  # fall back to python3 if not present
     PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
@@ -803,7 +804,7 @@ Delete a wiki and its nested git repo after explicit confirmation. Destructive â
     PY=~/.venv/bin/python
     PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
     NAME="<name>"
-    WIKI_ROOT="$HOME/ObsidianVault/03-Resources/$NAME"
+    WIKI_ROOT="$HOME/Documents/Obsidian Vault/03-Resources/$NAME"
     QMD="${CLAUDE_PLUGIN_DATA}/node_modules/.bin/qmd"
 
 ### Steps
@@ -871,7 +872,8 @@ Delete a wiki and its nested git repo after explicit confirmation. Destructive â
 
 8. **Update the Obsidian vault's `.gitignore` if present** â€” remove the entry for this wiki:
     ```bash
-    GITIGNORE="$HOME/ObsidianVault/.gitignore"
+    VAULT="$HOME/Documents/Obsidian Vault"
+    GITIGNORE="$VAULT/.gitignore"
     if [[ -f "$GITIGNORE" ]]; then
         # Remove any line matching `03-Resources/$NAME/` exactly
         python3 -c "
@@ -889,9 +891,10 @@ Delete a wiki and its nested git repo after explicit confirmation. Destructive â
 
 9. **If the vault is itself a git repo, commit the removal:**
     ```bash
-    if [[ -d "$HOME/ObsidianVault/.git" ]]; then
+    VAULT="$HOME/Documents/Obsidian Vault"
+    if [[ -d "$VAULT/.git" ]]; then
         (
-            cd "$HOME/ObsidianVault"
+            cd "$VAULT"
             git add -u || true  # Track the removal
             git commit -m "remove: $NAME wiki" 2>/dev/null || true
         )
@@ -915,7 +918,7 @@ Delete a wiki and its nested git repo after explicit confirmation. Destructive â
 
 If the deletion was accidental AND the vault is a git repo:
 ```bash
-cd ~/ObsidianVault
+cd ~/Documents/"Obsidian Vault"
 git reflog                          # find the pre-removal commit
 git checkout <pre-remove-sha> -- "03-Resources/$NAME/"
 ```
