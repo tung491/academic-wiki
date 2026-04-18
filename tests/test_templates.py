@@ -238,3 +238,31 @@ def test_venue_md_stub_body_has_frontmatter_delimiters():
     )
     assert md.startswith("---\n")
     assert md.count("---\n") >= 2
+
+
+def test_venue_md_stub_escapes_double_quotes_in_name():
+    md = venue_md_stub(
+        slug="s",
+        name='The "Best" Journal',
+        venue_type="journal",
+        paper_ids=["x2024y"],
+        field_tags=["field/x"],
+        today="2026-04-18",
+    )
+    assert 'name: "The \\"Best\\" Journal"' in md
+
+
+def test_venue_md_stub_empty_lists_render_as_square_brackets():
+    md = venue_md_stub(
+        slug="empty-venue",
+        name="Empty Venue",
+        venue_type="journal",
+        paper_ids=[],
+        field_tags=[],
+        today="2026-04-18",
+    )
+    # Both papers: and tags: should have the []-placeholder line, so "  []" appears ≥2 times
+    assert md.count("  []") == 2
+    # And neither list should render as null
+    assert "papers: null" not in md
+    assert "tags: null" not in md
