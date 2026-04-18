@@ -338,14 +338,15 @@ For detailed behavior see `references/compilation-guide.md`.
     f. LLM infers `field/*`, `subfield/*`, `method/*` tags from the extract body.
        ALWAYS add the deterministic tags from the extract frontmatter:
          - `year/<YYYY>` — from the extract's `year:` or `date:` field (first 4-digit year found).
-         - `venue/<slug>` — where `<slug> = make_slug(<raw-venue-string>)` from the extract's `venue:` field.
+         - `venue/<slug>` — where `<slug> = academic_wiki_lib.slug.make_slug(<raw-venue-string>)` from the extract's `venue:` field.
        Record the slug (not the raw string) in the paper page's `venue:` frontmatter field.
     g. Populate `authors:` as list of `{slug: <author-slug>, name: <human-name>}` objects. Generate each slug via `academic_wiki_lib.slug.make_slug`.
     h. Write `wiki/papers/<paper-id>.md` via `academic_wiki_lib.frontmatter.write_frontmatter`.
     i. **Venue page upsert** — after writing the paper page, create or update `wiki/venues/<venue-slug>.md`:
+       - If the extract has no `venue:` field (missing or empty/whitespace), skip this step entirely.
        - Compute `venue-type = academic_wiki_lib.templates.guess_venue_type(<raw-venue-string>)`.
-       - If `wiki/venues/<venue-slug>.md` does not exist: write it via `academic_wiki_lib.templates.venue_md_stub(slug=<venue-slug>, name=<raw-venue-string>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<YYYY-MM-DD>)`.
-       - If it exists: read with `read_frontmatter`, append `<paper-id>` to `papers:` (dedup, preserve order), union `field/*` tags into `tags:` (dedup, preserve order), bump `updated:` to today. Do not change `created:`, `name:`, `venue-type:`, or `slug:` (the user may have corrected them).
+       - If `wiki/venues/<venue-slug>.md` does not exist: render via `academic_wiki_lib.templates.venue_md_stub(slug=<venue-slug>, name=<raw-venue-string>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<YYYY-MM-DD>)` and write the returned string to the file path (plain `open(path, "w").write(...)`).
+       - If it exists: read with `academic_wiki_lib.frontmatter.read_frontmatter`, append `<paper-id>` to `papers:` (dedup, preserve order), union `field/*` tags into `tags:` (dedup, preserve order), bump `updated:` to today. Do not change `created:`, `name:`, `venue-type:`, or `slug:` (the user may have corrected them). Write back with `academic_wiki_lib.frontmatter.write_frontmatter`.
        - Runs in ALL modes (default AND `--paper-only`) — venue pages are cheap and belong with the paper write.
 
 4. **Entity extraction** (skipped with `--paper-only`): scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
