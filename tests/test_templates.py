@@ -7,6 +7,7 @@ from academic_wiki_lib.templates import (
     qmd_yml,
     all_subdirs,
     guess_venue_type,
+    venue_md_stub,
 )
 
 
@@ -194,3 +195,46 @@ def test_guess_venue_type_workshop_beats_conference():
     """Workshop keyword must win even when the name also contains conference keywords."""
     assert guess_venue_type("ICML Workshop on Robustness") == "workshop"
     assert guess_venue_type("NeurIPS Workshop co-located with the Conference") == "workshop"
+
+
+def test_venue_md_stub_has_all_required_fields():
+    md = venue_md_stub(
+        slug="ieee-communications-surveys-tutorials",
+        name="IEEE Communications Surveys & Tutorials",
+        venue_type="journal",
+        paper_ids=["gao2026agentic"],
+        field_tags=["field/wireless-communications"],
+        today="2026-04-18",
+    )
+    assert "type: venue" in md
+    assert "name: \"IEEE Communications Surveys & Tutorials\"" in md
+    assert "slug: ieee-communications-surveys-tutorials" in md
+    assert "venue-type: journal" in md
+    assert "created: 2026-04-18" in md
+    assert "updated: 2026-04-18" in md
+    assert "- gao2026agentic" in md
+    assert "- field/wireless-communications" in md
+
+
+def test_venue_md_stub_multiple_papers_and_fields():
+    md = venue_md_stub(
+        slug="neurips",
+        name="Conference on Neural Information Processing Systems",
+        venue_type="conference",
+        paper_ids=["vaswani2017attention", "bahdanau2014neural"],
+        field_tags=["field/nlp", "field/ml"],
+        today="2026-04-18",
+    )
+    assert "- vaswani2017attention" in md
+    assert "- bahdanau2014neural" in md
+    assert "- field/nlp" in md
+    assert "- field/ml" in md
+
+
+def test_venue_md_stub_body_has_frontmatter_delimiters():
+    md = venue_md_stub(
+        slug="x", name="X", venue_type="journal",
+        paper_ids=["a2024b"], field_tags=["field/x"], today="2026-04-18",
+    )
+    assert md.startswith("---\n")
+    assert md.count("---\n") >= 2

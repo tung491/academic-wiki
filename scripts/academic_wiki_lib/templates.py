@@ -679,6 +679,43 @@ _PREPRINT_RE = re.compile(
 )
 
 
+def venue_md_stub(
+    *,
+    slug: str,
+    name: str,
+    venue_type: str,
+    paper_ids: list[str],
+    field_tags: list[str],
+    today: str,
+) -> str:
+    """Render a minimal `wiki/venues/<slug>.md` page matching the §3 venue schema.
+
+    Caller is responsible for dedup + sort of paper_ids and field_tags.
+    """
+    escaped_name = name.replace('"', '\\"')
+    papers_block = "\n".join(f"  - {pid}" for pid in paper_ids) or "  []"
+    tags_block = "\n".join(f"  - {t}" for t in field_tags) or "  []"
+    return (
+        "---\n"
+        "type: venue\n"
+        f"name: \"{escaped_name}\"\n"
+        f"slug: {slug}\n"
+        f"venue-type: {venue_type}\n"
+        f"created: {today}\n"
+        f"updated: {today}\n"
+        "papers:\n"
+        f"{papers_block}\n"
+        "tags:\n"
+        f"{tags_block}\n"
+        "---\n"
+        "\n"
+        f"# {escaped_name}\n"
+        "\n"
+        "Papers published in this venue are listed in the `papers:` frontmatter. "
+        "Use Obsidian Dataview to render the list dynamically.\n"
+    )
+
+
 def guess_venue_type(raw_venue: str) -> str:
     """Heuristic classification of a raw venue string.
 
