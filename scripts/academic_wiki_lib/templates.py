@@ -274,7 +274,7 @@ tags: [field/..., person]
 ---
 ```
 
-### venue (secondary, on demand)
+### venue (secondary, auto-created on compile)
 
 `wiki/venues/<slug>.md`
 
@@ -390,8 +390,8 @@ Purpose:
 | `field/*` | Major research field | `field/wireless-comms`, `field/nlp` | Yes (during compile) |
 | `subfield/*` | Narrower slice | `subfield/rsma`, `subfield/attention` | Yes (during compile) |
 | `method/*` | Technique discussed | `method/rsma`, `method/transformer` | Yes (during compile) |
-| `year/*` | Publication year | `year/2017`, `year/2024` | Yes (on paper creation) |
-| `venue/*` | Venue slug | `venue/nips`, `venue/globecom` | Yes (on paper creation) |
+| `year/*` | Publication year | `year/2017`, `year/2024` | Yes (deterministic from extract frontmatter, during compile) |
+| `venue/*` | Venue slug | `venue/nips`, `venue/globecom` | Yes (deterministic from extract frontmatter, during compile) |
 | `project/*` | User's research project | `project/rsma-survey-2025` | **No — user-only** |
 | `user/*` | Personal workflow flag | `user/to-reread`, `user/must-cite` | **No — user-only** |
 
