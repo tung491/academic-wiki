@@ -132,23 +132,35 @@ def test_find_existing_paper_ignores_papers_without_identifiers(tmp_wiki):
 
 
 def test_resolve_collision_appends_numeric_suffix(tmp_wiki):
-    (tmp_wiki / "wiki/papers/smith-2020-neural.md").write_text("---\n---\n")
-    result = resolve_collision(str(tmp_wiki), "smith-2020-neural")
-    assert result == "smith-2020-neural-2"
+    (tmp_wiki / "wiki/papers/smith2020neural.md").write_text("---\n---\n")
+    result = resolve_collision(str(tmp_wiki), "smith2020neural")
+    assert result == "smith2020neural2"
 
 
 def test_resolve_collision_finds_next_available(tmp_wiki):
-    (tmp_wiki / "wiki/papers/smith-2020-neural.md").write_text("")
-    (tmp_wiki / "wiki/papers/smith-2020-neural-2.md").write_text("")
-    (tmp_wiki / "wiki/papers/smith-2020-neural-3.md").write_text("")
-    result = resolve_collision(str(tmp_wiki), "smith-2020-neural")
-    assert result == "smith-2020-neural-4"
+    (tmp_wiki / "wiki/papers/smith2020neural.md").write_text("")
+    (tmp_wiki / "wiki/papers/smith2020neural2.md").write_text("")
+    (tmp_wiki / "wiki/papers/smith2020neural3.md").write_text("")
+    result = resolve_collision(str(tmp_wiki), "smith2020neural")
+    assert result == "smith2020neural4"
 
 
 def test_resolve_collision_no_collision(tmp_wiki):
     """If no collision, returns the proposed id unchanged."""
-    result = resolve_collision(str(tmp_wiki), "brand-new-2025-paper")
-    assert result == "brand-new-2025-paper"
+    result = resolve_collision(str(tmp_wiki), "brandnew2025paper")
+    assert result == "brandnew2025paper"
+
+
+def test_resolve_collision_checks_clipper_frontmatter(tmp_wiki):
+    """resolve_collision must also check paper-id values in clipper .md frontmatter."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+    clipper_dir = tmp_wiki / "raw/papers/Some_Paper_Dir"
+    clipper_dir.mkdir(parents=True)
+    clipper_md = clipper_dir / "Some_Paper.md"
+    write_frontmatter(str(clipper_md), {"paper-id": "smith2020neural"}, "body")
+    # No wiki/papers/smith2020neural.md exists, but the clipper .md has claimed this paper-id
+    result = resolve_collision(str(tmp_wiki), "smith2020neural")
+    assert result == "smith2020neural2"
 
 
 def test_find_existing_paper_skips_malformed(tmp_wiki):

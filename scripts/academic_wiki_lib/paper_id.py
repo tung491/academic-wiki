@@ -116,11 +116,29 @@ def find_existing_paper_by_identifiers(wiki_root, identifiers: dict[str, str]) -
 
 
 def resolve_collision(wiki_root, proposed_id: str) -> str:
-    """If <proposed_id>.md already exists in wiki/papers/, append -2, -3, ..."""
+    """If proposed_id is taken (wiki/papers/ or clipper frontmatter), append 2, 3, ..."""
     papers_dir = Path(wiki_root) / "wiki" / "papers"
+    raw_papers_dir = Path(wiki_root) / "raw" / "papers"
+
+    def _is_taken(candidate: str) -> bool:
+        if (papers_dir / f"{candidate}.md").exists():
+            return True
+        if raw_papers_dir.is_dir():
+            for d in raw_papers_dir.iterdir():
+                if not d.is_dir():
+                    continue
+                for md in d.glob("*.md"):
+                    try:
+                        fm, _ = read_frontmatter(str(md))
+                        if fm.get("paper-id") == candidate:
+                            return True
+                    except Exception:
+                        continue
+        return False
+
     candidate = proposed_id
     suffix = 2
-    while (papers_dir / f"{candidate}.md").exists():
-        candidate = f"{proposed_id}-{suffix}"
+    while _is_taken(candidate):
+        candidate = f"{proposed_id}{suffix}"
         suffix += 1
     return candidate
