@@ -23,7 +23,7 @@ For each paper-id to compile:
 
 4. Write (or update) `wiki/papers/<paper-id>.md` with:
     - Full frontmatter per §3.1: `paper-id`, `type: paper`, `status`, `created` (today if new), `updated` (today), `publication-date` (if known), `title`, `authors` (list of `{slug, name}` objects), `year`, `venue` (**slug** form via `academic_wiki_lib.slug.make_slug(<raw-venue>)`), `identifiers`, `aliases: []`, `source-version`, `bib-file`, `extract`, `notes` (only if `raw/notes/<paper-id>.md` exists), `figures` (only if `raw/figures/<paper-id>/` is non-empty), `references-raw` (list of raw bibliography strings), `cites: []` (empty in `--paper-only` mode; resolved in full mode), `tags`.
-    - Tags MUST include the deterministic pair `year/<YYYY>` + `venue/<slug>` derived from the extract frontmatter, in addition to any LLM-inferred `field/*`, `subfield/*`, `method/*` tags.
+    - Tags MUST include `year/<YYYY>` (derived from the extract frontmatter's `year:` or `date:` field) and `venue/<slug>` (when the extract has a `venue:` field — if missing, only the `year/*` tag is added). These are deterministic — they do not depend on LLM inference. LLM-inferred tags (`field/*`, `subfield/*`, `method/*`) are added on top.
     - Body sections: `## Metadata` (inline one-liner), `## Summary`, `## Key Contributions`, `## Methods`, `## Results`, `## Claims`, `## User Notes`, `## See Also`.
 
 4b. **Venue page upsert** (runs after step 4, before step 5) — after writing the paper page, ensure `wiki/venues/<venue-slug>.md` exists and includes this paper:

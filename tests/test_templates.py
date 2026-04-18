@@ -266,3 +266,20 @@ def test_venue_md_stub_empty_lists_render_as_square_brackets():
     # And neither list should render as null
     assert "papers: null" not in md
     assert "tags: null" not in md
+
+
+def test_venue_md_stub_h1_uses_raw_name_not_escaped():
+    """Markdown H1 must not carry the YAML escape sequence."""
+    md = venue_md_stub(
+        slug="s",
+        name='The "Best" Journal',
+        venue_type="journal",
+        paper_ids=["x2024y"],
+        field_tags=["field/x"],
+        today="2026-04-18",
+    )
+    # Frontmatter keeps the escaped form
+    assert 'name: "The \\"Best\\" Journal"' in md
+    # But the H1 uses the raw name with actual quotes
+    assert '# The "Best" Journal\n' in md
+    assert '# The \\"Best\\"' not in md

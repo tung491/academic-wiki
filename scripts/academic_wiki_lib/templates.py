@@ -401,7 +401,7 @@ Allowed without a prefix. Examples: `foundational`, `survey`, `tutorial`, `posit
 
 ### Rules
 
-1. Paper pages get `field/*`, `subfield/*`, `method/*`, `year/*`, `venue/*` from the LLM during compile.
+1. Paper pages get `field/*`, `subfield/*`, `method/*` from the LLM during compile (inferred from extract body). `year/*` and `venue/*` are added deterministically from the extract frontmatter — not inferred.
 2. Concept / method / open-problem / claim / result pages get `field/*` and `subfield/*` aggregated from their `sources:` paper pages.
 3. `project/*` and `user/*` are user-driven; the LLM may suggest them but never applies them silently.
 4. Lint fails if any paper / concept / method / open-problem / claim / result lacks ≥1 `field/*` tag.
@@ -709,7 +709,7 @@ def venue_md_stub(
         f"{tags_block}\n"
         "---\n"
         "\n"
-        f"# {escaped_name}\n"
+        f"# {name}\n"
         "\n"
         "Papers published in this venue are listed in the `papers:` frontmatter. "
         "Use Obsidian Dataview to render the list dynamically.\n"
