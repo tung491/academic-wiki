@@ -74,47 +74,47 @@ def test_normalize_url_preserves_case():
 
 def test_find_existing_paper_by_doi(tmp_wiki):
     from academic_wiki_lib.frontmatter import write_frontmatter
-    paper = tmp_wiki / "wiki/papers/vaswani-2017-attention.md"
+    paper = tmp_wiki / "wiki/papers/vaswani2017attention.md"
     write_frontmatter(str(paper), {
-        "paper-id": "vaswani-2017-attention",
+        "paper-id": "vaswani2017attention",
         "identifiers": {"doi": "10.xx/yy", "arxiv": "1706.03762"},
     }, "")
     found = find_existing_paper_by_identifiers(str(tmp_wiki), {"doi": "10.xx/yy"})
-    assert found == "vaswani-2017-attention"
+    assert found == "vaswani2017attention"
 
 
 def test_find_existing_paper_by_arxiv_different_version(tmp_wiki):
     from academic_wiki_lib.frontmatter import write_frontmatter
-    paper = tmp_wiki / "wiki/papers/vaswani-2017-attention.md"
+    paper = tmp_wiki / "wiki/papers/vaswani2017attention.md"
     write_frontmatter(str(paper), {
-        "paper-id": "vaswani-2017-attention",
+        "paper-id": "vaswani2017attention",
         "identifiers": {"arxiv": "1706.03762", "arxiv-version": "v3"},
     }, "")
     # Incoming is the same arxiv ID at a different version — should match (version stripped)
     found = find_existing_paper_by_identifiers(str(tmp_wiki), {"arxiv": "1706.03762v5"})
-    assert found == "vaswani-2017-attention"
+    assert found == "vaswani2017attention"
 
 
 def test_find_existing_paper_by_arxiv_no_version_both_sides(tmp_wiki):
     from academic_wiki_lib.frontmatter import write_frontmatter
-    paper = tmp_wiki / "wiki/papers/x-2024-y.md"
+    paper = tmp_wiki / "wiki/papers/x2024y.md"
     write_frontmatter(str(paper), {
-        "paper-id": "x-2024-y",
+        "paper-id": "x2024y",
         "identifiers": {"arxiv": "2401.12345"},
     }, "")
     found = find_existing_paper_by_identifiers(str(tmp_wiki), {"arxiv": "2401.12345"})
-    assert found == "x-2024-y"
+    assert found == "x2024y"
 
 
 def test_find_existing_paper_doi_case_insensitive(tmp_wiki):
     from academic_wiki_lib.frontmatter import write_frontmatter
-    paper = tmp_wiki / "wiki/papers/x-2024-y.md"
+    paper = tmp_wiki / "wiki/papers/x2024y.md"
     write_frontmatter(str(paper), {
-        "paper-id": "x-2024-y",
+        "paper-id": "x2024y",
         "identifiers": {"doi": "10.1145/AbCdEf"},
     }, "")
     found = find_existing_paper_by_identifiers(str(tmp_wiki), {"doi": "10.1145/abcdef"})
-    assert found == "x-2024-y"
+    assert found == "x2024y"
 
 
 def test_find_existing_paper_no_match(tmp_wiki):
