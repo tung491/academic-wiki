@@ -301,7 +301,7 @@ This fires on any exit (normal or error). The explicit release in step 15 is not
 
 ## `compile [<paper-id>] [--paper-only]`
 
-Default compile runs the full pipeline: paper pages + entity extraction + cites resolution + backlink audit + cross-paper candidate detection + index rebuild. `--paper-only` is an escape hatch that skips entity extraction through cross-paper detection (useful for a fast first pass on a new source).
+Default compile runs the full pipeline: paper pages + entity extraction + cites resolution + backlink audit + cross-paper candidate detection + index rebuild. `--paper-only` is an escape hatch that skips entity extraction through cross-paper detection (useful for a fast first pass on a new source). Venue pages under `wiki/venues/<slug>.md` are auto-created or updated for every paper whose extract frontmatter carries a `venue:` field — this happens in both modes.
 
 For detailed behavior see `references/compilation-guide.md`.
 
@@ -335,9 +335,18 @@ For detailed behavior see `references/compilation-guide.md`.
     c. Check if `wiki/papers/<paper-id>.md` already exists (update case) — if yes, apply the update conflict policy (§3.6) during merge.
     d. LLM generates body content: Metadata / Summary / Key Contributions / Methods / Results / Claims / User Notes / See Also sections.
     e. LLM extracts `references-raw: [...]` from the bibliography section of the extract.
-    f. LLM infers `field/*`, `subfield/*`, `method/*` tags from content. `year/<YYYY>` and `venue/<slug>` from frontmatter.
+    f. LLM infers `field/*`, `subfield/*`, `method/*` tags from the extract body.
+       ALWAYS add the deterministic tags from the extract frontmatter:
+         - `year/<YYYY>` — from the extract's `year:` or `date:` field (first 4-digit year found).
+         - `venue/<slug>` — where `<slug> = make_slug(<raw-venue-string>)` from the extract's `venue:` field.
+       Record the slug (not the raw string) in the paper page's `venue:` frontmatter field.
     g. Populate `authors:` as list of `{slug: <author-slug>, name: <human-name>}` objects. Generate each slug via `academic_wiki_lib.slug.make_slug`.
     h. Write `wiki/papers/<paper-id>.md` via `academic_wiki_lib.frontmatter.write_frontmatter`.
+    i. **Venue page upsert** — after writing the paper page, create or update `wiki/venues/<venue-slug>.md`:
+       - Compute `venue-type = academic_wiki_lib.templates.guess_venue_type(<raw-venue-string>)`.
+       - If `wiki/venues/<venue-slug>.md` does not exist: write it via `academic_wiki_lib.templates.venue_md_stub(slug=<venue-slug>, name=<raw-venue-string>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<YYYY-MM-DD>)`.
+       - If it exists: read with `read_frontmatter`, append `<paper-id>` to `papers:` (dedup, preserve order), union `field/*` tags into `tags:` (dedup, preserve order), bump `updated:` to today. Do not change `created:`, `name:`, `venue-type:`, or `slug:` (the user may have corrected them).
+       - Runs in ALL modes (default AND `--paper-only`) — venue pages are cheap and belong with the paper write.
 
 4. **Entity extraction** (skipped with `--paper-only`): scan the extract body for mentions of concepts, methods, and open problems. For each identified entity:
     a. Generate a slug via `academic_wiki_lib.slug.make_slug(<entity-name>)`.
