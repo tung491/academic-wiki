@@ -1,5 +1,5 @@
 from academic_wiki_mcp import mcp
-# from academic_wiki_mcp.tools import download, discovery  # noqa: F401
+from academic_wiki_mcp.tools import bibtex, discovery, download  # noqa: F401
 
 
 def main():
