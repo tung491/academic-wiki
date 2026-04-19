@@ -78,14 +78,24 @@ def parse_first_entry(bibtex_text: str) -> dict:
 
 
 _KEY_REWRITE = re.compile(r"(@\w+\s*\{\s*)([^,\s]+)(\s*,)")
+# A safe BibTeX citation key contains no whitespace, no commas, and no braces.
+# (Valid wiki paper-ids are always safe; this guards public callers.)
+_VALID_PAPER_ID = re.compile(r"^[^\s,{}]+$")
 
 
 def rewrite_citation_key(bibtex_text: str, paper_id: str) -> str:
     """Replace the citation key inside the first @type{KEY, ...} with paper_id.
 
     Preserves whitespace, field order, and escaping of the rest of the entry.
-    Raises ValueError if no @type{key, pattern is found.
+    `paper_id` must contain no whitespace, commas, or braces (would produce
+    malformed BibTeX).
+
+    Raises ValueError if `paper_id` is unsafe or no @type{key, pattern is found.
     """
+    if not _VALID_PAPER_ID.match(paper_id):
+        raise ValueError(
+            f"paper_id contains characters that would corrupt BibTeX: {paper_id!r}"
+        )
     new_text, n = _KEY_REWRITE.subn(
         lambda m: f"{m.group(1)}{paper_id}{m.group(3)}",
         bibtex_text,

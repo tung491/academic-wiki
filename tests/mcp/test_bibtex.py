@@ -105,3 +105,19 @@ def test_rewrite_citation_key_preserves_other_at_signs():
 def test_rewrite_citation_key_no_match_raises():
     with pytest.raises(ValueError):
         rewrite_citation_key("no entry here", "newkey")
+
+
+def test_rewrite_citation_key_only_rewrites_first_entry():
+    text = "@article{Smith_2020, year={2020}}\n@article{Jones_2021, year={2021}}"
+    result = rewrite_citation_key(text, "newkey")
+    assert "newkey" in result
+    assert "Jones_2021" in result  # second entry untouched
+    assert "Smith_2020" not in result
+    assert result.count("newkey") == 1
+
+
+def test_rewrite_citation_key_rejects_unsafe_paper_id():
+    text = "@article{Smith_2020, year={2020}}"
+    for bad in ["with space", "with,comma", "with{brace", "with}brace", ""]:
+        with pytest.raises(ValueError):
+            rewrite_citation_key(text, bad)
