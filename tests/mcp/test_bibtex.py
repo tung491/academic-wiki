@@ -40,3 +40,39 @@ def test_get_paper_by_doi_returns_none_when_s2_get_returns_none():
     with patch("academic_wiki_mcp.s2_client._s2_get", return_value=None):
         result = get_paper_by_doi("10.1/ratelimited")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# bibtex.parse_first_entry
+# ---------------------------------------------------------------------------
+
+from academic_wiki_mcp.bibtex import parse_first_entry
+
+
+def test_parse_first_entry_basic():
+    text = "@article{Smith_2020, title = {Foo}, year = {2020}}"
+    parsed = parse_first_entry(text)
+    assert parsed["type"] == "article"
+    assert parsed["key"] == "Smith_2020"
+    assert parsed["fields"]["title"] == "Foo"
+    assert parsed["fields"]["year"] == "2020"
+
+
+def test_parse_first_entry_handles_inproceedings_with_braces():
+    text = """@inproceedings{vaswani2017attention,
+      title = {Attention Is All You Need},
+      author = {Vaswani, Ashish and Shazeer, Noam},
+      booktitle = {Advances in {Neural} Information Processing Systems},
+      year = {2017},
+    }"""
+    parsed = parse_first_entry(text)
+    assert parsed["type"] == "inproceedings"
+    assert parsed["key"] == "vaswani2017attention"
+    assert parsed["fields"]["title"] == "Attention Is All You Need"
+    assert parsed["fields"]["booktitle"] == "Advances in {Neural} Information Processing Systems"
+    assert parsed["fields"]["year"] == "2017"
+
+
+def test_parse_first_entry_no_entry_raises():
+    with pytest.raises(ValueError):
+        parse_first_entry("not a bibtex file at all")
