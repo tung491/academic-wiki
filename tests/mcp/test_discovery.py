@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
+from academic_wiki_mcp.s2_client import _s2_get
 from academic_wiki_mcp.tools.discovery import (
-    _s2_get,
     _search,
     _references,
     _citations,
