@@ -60,6 +60,9 @@ def parse_first_entry(bibtex_text: str) -> dict:
             pos += 1
             value_start = pos
             while pos < n and bibtex_text[pos] != '"':
+                # Skip past backslash-escaped characters (e.g., \" inside the value)
+                if bibtex_text[pos] == "\\" and pos + 1 < n:
+                    pos += 1
                 pos += 1
             value = bibtex_text[value_start:pos]
             pos += 1  # skip closing quote

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from academic_wiki_mcp.bibtex import parse_first_entry
 from academic_wiki_mcp.s2_client import get_paper_by_doi
 
 
@@ -46,8 +47,6 @@ def test_get_paper_by_doi_returns_none_when_s2_get_returns_none():
 # bibtex.parse_first_entry
 # ---------------------------------------------------------------------------
 
-from academic_wiki_mcp.bibtex import parse_first_entry
-
 
 def test_parse_first_entry_basic():
     text = "@article{Smith_2020, title = {Foo}, year = {2020}}"
@@ -76,3 +75,10 @@ def test_parse_first_entry_handles_inproceedings_with_braces():
 def test_parse_first_entry_no_entry_raises():
     with pytest.raises(ValueError):
         parse_first_entry("not a bibtex file at all")
+
+
+def test_parse_first_entry_double_quoted_with_escaped_quotes():
+    text = '@article{x, title = "A \\"Quoted\\" Title", year = "2020"}'
+    parsed = parse_first_entry(text)
+    assert parsed["fields"]["title"] == 'A \\"Quoted\\" Title'
+    assert parsed["fields"]["year"] == "2020"
