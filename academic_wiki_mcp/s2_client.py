@@ -43,3 +43,15 @@ def _normalize_s2_paper(p: dict) -> dict:
         "arxiv": ext.get("ArXiv", ""),
         "citationCount": p.get("citationCount", 0),
     }
+
+
+def get_paper_by_doi(doi: str) -> dict | None:
+    """Fetch a single paper by DOI from S2 Graph API.
+
+    Returns the normalized paper dict (title, authors, year, venue, doi, ...)
+    or None if not found / S2 unreachable.
+    """
+    resp = _s2_get(f"{S2_GRAPH}/paper/DOI:{doi}", params={"fields": S2_FIELDS})
+    if resp is None or resp.status_code != 200:
+        return None
+    return _normalize_s2_paper(resp.json())
