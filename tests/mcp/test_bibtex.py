@@ -271,11 +271,12 @@ def _route(doi_org_resp, s2_resp):
             if isinstance(doi_org_resp, BaseException):
                 raise doi_org_resp
             return doi_org_resp
-        if "semanticscholar" in url:
+        elif "semanticscholar" in url:
             if isinstance(s2_resp, BaseException):
                 raise s2_resp
             return s2_resp
-        raise AssertionError(f"unexpected url: {url}")
+        else:
+            raise AssertionError(f"unexpected url: {url}")
     return fake_get
 
 
@@ -319,8 +320,9 @@ async def test_doi_to_bibtex_falls_back_on_timeout():
     assert result["source"] == "semantic_scholar"
 
 
-async def test_doi_to_bibtex_falls_back_when_rewrite_key_fails():
-    # Body starts with @ but has no @type{key, pattern (malformed)
+async def test_doi_to_bibtex_falls_back_when_bibtex_is_unparseable():
+    # Body starts with @ but parse_first_entry can't find an @type{key, pattern,
+    # so it raises ValueError and _try_doi_org returns None → fallback fires.
     side = _route(
         _make_doi_org_resp(200, text="@malformed_no_braces", content_type="application/x-bibtex"),
         _make_s2_resp(_S2_GOOD),
