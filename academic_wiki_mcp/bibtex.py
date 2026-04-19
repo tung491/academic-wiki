@@ -75,3 +75,22 @@ def parse_first_entry(bibtex_text: str) -> dict:
         fields[field_name] = value
 
     return {"type": entry_type, "key": key, "fields": fields}
+
+
+_KEY_REWRITE = re.compile(r"(@\w+\s*\{\s*)([^,\s]+)(\s*,)")
+
+
+def rewrite_citation_key(bibtex_text: str, paper_id: str) -> str:
+    """Replace the citation key inside the first @type{KEY, ...} with paper_id.
+
+    Preserves whitespace, field order, and escaping of the rest of the entry.
+    Raises ValueError if no @type{key, pattern is found.
+    """
+    new_text, n = _KEY_REWRITE.subn(
+        lambda m: f"{m.group(1)}{paper_id}{m.group(3)}",
+        bibtex_text,
+        count=1,
+    )
+    if n == 0:
+        raise ValueError("No @type{key, ...} pattern found in BibTeX text")
+    return new_text

@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from academic_wiki_mcp.bibtex import parse_first_entry
+from academic_wiki_mcp.bibtex import parse_first_entry, rewrite_citation_key
 from academic_wiki_mcp.s2_client import get_paper_by_doi
 
 
@@ -82,3 +82,26 @@ def test_parse_first_entry_double_quoted_with_escaped_quotes():
     parsed = parse_first_entry(text)
     assert parsed["fields"]["title"] == 'A \\"Quoted\\" Title'
     assert parsed["fields"]["year"] == "2020"
+
+
+# ---------------------------------------------------------------------------
+# bibtex.rewrite_citation_key
+# ---------------------------------------------------------------------------
+
+
+def test_rewrite_citation_key_replaces_first_match():
+    text = "@article{Smith_2020, title = {Foo}, year = {2020}}"
+    result = rewrite_citation_key(text, "vaswani2017attention")
+    assert result == "@article{vaswani2017attention, title = {Foo}, year = {2020}}"
+
+
+def test_rewrite_citation_key_preserves_other_at_signs():
+    text = "@article{x, note = {foo@bar.com}}"
+    result = rewrite_citation_key(text, "newkey")
+    # First @ rewritten, embedded @bar.com untouched
+    assert result == "@article{newkey, note = {foo@bar.com}}"
+
+
+def test_rewrite_citation_key_no_match_raises():
+    with pytest.raises(ValueError):
+        rewrite_citation_key("no entry here", "newkey")
