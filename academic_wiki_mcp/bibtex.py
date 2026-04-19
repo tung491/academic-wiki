@@ -104,3 +104,61 @@ def rewrite_citation_key(bibtex_text: str, paper_id: str) -> str:
     if n == 0:
         raise ValueError("No @type{key, ...} pattern found in BibTeX text")
     return new_text
+
+
+_INPROC_PATTERN = re.compile(
+    r"Proceedings|Conference|Symposium|Workshop|ICCV|CVPR|NeurIPS|ICML",
+    re.IGNORECASE,
+)
+
+
+def build_from_metadata(meta: dict, paper_id: str) -> tuple[str, str]:
+    """Construct a BibTeX entry from a normalized S2-shaped metadata dict.
+
+    Entry-type heuristic (case-insensitive on `meta['venue']`):
+      - matches Proceedings|Conference|Symposium|Workshop|ICCV|CVPR|NeurIPS|ICML
+        → @inproceedings, field name `booktitle`
+      - non-empty venue → @article, field name `journal`
+      - empty venue → @misc, no booktitle/journal
+
+    Always emits: title, author (when authors list is non-empty), year, doi
+    (when present). Skips empty fields silently.
+
+    Returns (bibtex_text, entry_type) — entry_type is one of
+    "article" | "inproceedings" | "misc".
+
+    Raises ValueError if title or year are missing.
+    """
+    title = meta.get("title")
+    year = meta.get("year")
+    if not title:
+        raise ValueError("title is missing")
+    if not year:
+        raise ValueError("year is missing")
+
+    venue = meta.get("venue") or ""
+    if venue and _INPROC_PATTERN.search(venue):
+        entry_type = "inproceedings"
+        venue_field = "booktitle"
+    elif venue:
+        entry_type = "article"
+        venue_field = "journal"
+    else:
+        entry_type = "misc"
+        venue_field = None
+
+    authors = meta.get("authors") or []
+    doi = meta.get("doi") or ""
+
+    lines = [f"@{entry_type}{{{paper_id},"]
+    lines.append(f"  title = {{{title}}},")
+    if authors:
+        author_str = " and ".join(authors)
+        lines.append(f"  author = {{{author_str}}},")
+    lines.append(f"  year = {{{year}}},")
+    if venue_field:
+        lines.append(f"  {venue_field} = {{{venue}}},")
+    if doi:
+        lines.append(f"  doi = {{{doi}}},")
+    lines.append("}")
+    return "\n".join(lines), entry_type

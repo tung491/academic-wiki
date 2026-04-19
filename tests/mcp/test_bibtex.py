@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from academic_wiki_mcp.bibtex import parse_first_entry, rewrite_citation_key
+from academic_wiki_mcp.bibtex import build_from_metadata, parse_first_entry, rewrite_citation_key
 from academic_wiki_mcp.s2_client import get_paper_by_doi
 
 
@@ -121,3 +121,87 @@ def test_rewrite_citation_key_rejects_unsafe_paper_id():
     for bad in ["with space", "with,comma", "with{brace", "with}brace", ""]:
         with pytest.raises(ValueError):
             rewrite_citation_key(text, bad)
+
+
+# ---------------------------------------------------------------------------
+# bibtex.build_from_metadata
+# ---------------------------------------------------------------------------
+
+
+def _meta(**overrides):
+    base = {
+        "title": "Sample Title",
+        "authors": ["Ada Lovelace", "Charles Babbage"],
+        "year": 1843,
+        "venue": "Sample Journal",
+        "doi": "10.1/sample",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_build_from_metadata_inproceedings():
+    meta = _meta(venue="Proceedings of NeurIPS")
+    text, entry_type = build_from_metadata(meta, "lovelace1843sample")
+    assert entry_type == "inproceedings"
+    assert text.startswith("@inproceedings{lovelace1843sample,")
+    assert "booktitle = {Proceedings of NeurIPS}" in text
+    assert "journal" not in text
+    assert "title = {Sample Title}" in text
+    assert "author = {Ada Lovelace and Charles Babbage}" in text
+    assert "year = {1843}" in text
+    assert "doi = {10.1/sample}" in text
+
+
+def test_build_from_metadata_article():
+    meta = _meta(venue="Nature")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "article"
+    assert text.startswith("@article{key1,")
+    assert "journal = {Nature}" in text
+    assert "booktitle" not in text
+
+
+def test_build_from_metadata_misc_no_venue():
+    meta = _meta(venue="")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "misc"
+    assert text.startswith("@misc{key1,")
+    assert "journal" not in text
+    assert "booktitle" not in text
+
+
+def test_build_from_metadata_authors_joined_with_and():
+    meta = _meta(authors=["A B", "C D", "E F"])
+    text, _ = build_from_metadata(meta, "key1")
+    assert "author = {A B and C D and E F}" in text
+
+
+def test_build_from_metadata_omits_empty_doi():
+    meta = _meta(doi="")
+    text, _ = build_from_metadata(meta, "key1")
+    assert "doi" not in text
+
+
+def test_build_from_metadata_omits_empty_authors():
+    meta = _meta(authors=[])
+    text, _ = build_from_metadata(meta, "key1")
+    assert "author" not in text
+
+
+def test_build_from_metadata_raises_when_title_missing():
+    meta = _meta(title="")
+    with pytest.raises(ValueError):
+        build_from_metadata(meta, "key1")
+
+
+def test_build_from_metadata_raises_when_year_missing():
+    meta = _meta(year=None)
+    with pytest.raises(ValueError):
+        build_from_metadata(meta, "key1")
+
+
+def test_build_from_metadata_inproceedings_pattern_case_insensitive():
+    meta = _meta(venue="cvpr 2024 workshop")
+    _, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "inproceedings"
