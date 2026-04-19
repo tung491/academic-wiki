@@ -51,6 +51,21 @@ def _try_doi_org(doi: str, paper_id: str) -> dict | None:
     return {"bibtex": out, "source": "doi.org", "entry_type": parsed["type"]}
 
 
+def _try_s2_fallback(doi: str, paper_id: str) -> dict:
+    """Fetch metadata via Semantic Scholar and synthesize a BibTeX entry.
+
+    Returns the success dict, or an error dict on S2 miss / incomplete metadata.
+    """
+    meta = s2_client.get_paper_by_doi(doi)
+    if meta is None:
+        return {"error": "DOI not found in doi.org or Semantic Scholar", "doi": doi}
+    try:
+        out, entry_type = bibtex.build_from_metadata(meta, paper_id)
+    except ValueError as e:
+        return {"error": f"S2 metadata incomplete: {e}", "doi": doi, "partial": meta}
+    return {"bibtex": out, "source": "semantic_scholar", "entry_type": entry_type}
+
+
 @mcp.tool()
 async def doi_to_bibtex(doi: str, paper_id: str) -> dict:
     """Fetch BibTeX metadata for a DOI and return an entry keyed by paper_id.
@@ -74,7 +89,7 @@ async def doi_to_bibtex(doi: str, paper_id: str) -> dict:
         result = _try_doi_org(doi, paper_id)
         if result is not None:
             return result
-        return {"error": "doi.org returned no BibTeX (fallback not implemented yet)", "doi": doi}
+        return _try_s2_fallback(doi, paper_id)
     except Exception as e:
         log.exception("doi_to_bibtex unexpected error")
         return {"error": f"{type(e).__name__}: {e}", "doi": doi}

@@ -242,3 +242,89 @@ async def test_doi_to_bibtex_doi_org_happy_path():
     assert result["entry_type"] == "article"
     assert result["bibtex"].startswith("@article{lovelace1843sample,")
     assert "Smith_2020" not in result["bibtex"]
+
+
+# ---------------------------------------------------------------------------
+# tools/bibtex.doi_to_bibtex — fallback paths
+# ---------------------------------------------------------------------------
+
+
+def _make_doi_org_resp(status_code: int, text: str = "", content_type: str = ""):
+    r = MagicMock()
+    r.status_code = status_code
+    r.text = text
+    r.headers = {"Content-Type": content_type}
+    return r
+
+
+def _make_s2_resp(paper_dict):
+    r = MagicMock()
+    r.status_code = 200
+    r.json.return_value = paper_dict
+    return r
+
+
+def _route(doi_org_resp, s2_resp):
+    """Build a side_effect that returns doi_org_resp for doi.org and s2_resp for S2."""
+    def fake_get(url, *args, **kwargs):
+        if "doi.org" in url:
+            if isinstance(doi_org_resp, BaseException):
+                raise doi_org_resp
+            return doi_org_resp
+        if "semanticscholar" in url:
+            if isinstance(s2_resp, BaseException):
+                raise s2_resp
+            return s2_resp
+        raise AssertionError(f"unexpected url: {url}")
+    return fake_get
+
+
+_S2_GOOD = {
+    "paperId": "abc",
+    "title": "Fallback Title",
+    "authors": [{"name": "Ada Lovelace"}],
+    "year": 1843,
+    "venue": "Sample Journal",
+    "abstract": "",
+    "externalIds": {"DOI": "10.1/foo"},
+    "citationCount": 1,
+}
+
+
+async def test_doi_to_bibtex_falls_back_on_404():
+    side = _route(_make_doi_org_resp(404), _make_s2_resp(_S2_GOOD))
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/foo", "key1")
+    assert result["source"] == "semantic_scholar"
+    assert result["entry_type"] == "article"
+    assert "@article{key1," in result["bibtex"]
+    assert "title = {Fallback Title}" in result["bibtex"]
+
+
+async def test_doi_to_bibtex_falls_back_on_non_bibtex_body():
+    side = _route(
+        _make_doi_org_resp(200, text="<html>not bibtex</html>", content_type="text/html"),
+        _make_s2_resp(_S2_GOOD),
+    )
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/foo", "key1")
+    assert result["source"] == "semantic_scholar"
+
+
+async def test_doi_to_bibtex_falls_back_on_timeout():
+    import requests as _r
+    side = _route(_r.Timeout("doi.org timed out"), _make_s2_resp(_S2_GOOD))
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/foo", "key1")
+    assert result["source"] == "semantic_scholar"
+
+
+async def test_doi_to_bibtex_falls_back_when_rewrite_key_fails():
+    # Body starts with @ but has no @type{key, pattern (malformed)
+    side = _route(
+        _make_doi_org_resp(200, text="@malformed_no_braces", content_type="application/x-bibtex"),
+        _make_s2_resp(_S2_GOOD),
+    )
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/foo", "key1")
+    assert result["source"] == "semantic_scholar"
