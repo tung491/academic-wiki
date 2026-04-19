@@ -4,6 +4,7 @@ import pytest
 
 from academic_wiki_mcp.bibtex import build_from_metadata, parse_first_entry, rewrite_citation_key
 from academic_wiki_mcp.s2_client import get_paper_by_doi
+from academic_wiki_mcp.tools.bibtex import doi_to_bibtex
 
 
 def test_get_paper_by_doi_returns_normalized_paper():
@@ -205,3 +206,38 @@ def test_build_from_metadata_inproceedings_pattern_case_insensitive():
     meta = _meta(venue="cvpr 2024 workshop")
     _, entry_type = build_from_metadata(meta, "key1")
     assert entry_type == "inproceedings"
+
+
+# ---------------------------------------------------------------------------
+# tools/bibtex.doi_to_bibtex — input validation + happy path
+# ---------------------------------------------------------------------------
+
+
+async def test_doi_to_bibtex_invalid_doi_returns_error_without_network():
+    with patch("requests.get") as mock_get:
+        result = await doi_to_bibtex("not-a-doi", "key1")
+    assert "error" in result
+    assert "invalid DOI" in result["error"]
+    mock_get.assert_not_called()
+
+
+async def test_doi_to_bibtex_empty_paper_id_returns_error():
+    with patch("requests.get") as mock_get:
+        result = await doi_to_bibtex("10.1/foo", "")
+    assert "error" in result
+    assert "paper_id is required" in result["error"]
+    mock_get.assert_not_called()
+
+
+async def test_doi_to_bibtex_doi_org_happy_path():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = "@article{Smith_2020, title = {Foo}, year = {2020}}"
+    mock_resp.headers = {"Content-Type": "application/x-bibtex"}
+    with patch("requests.get", return_value=mock_resp):
+        result = await doi_to_bibtex("10.1/foo", "lovelace1843sample")
+    assert "error" not in result
+    assert result["source"] == "doi.org"
+    assert result["entry_type"] == "article"
+    assert result["bibtex"].startswith("@article{lovelace1843sample,")
+    assert "Smith_2020" not in result["bibtex"]
