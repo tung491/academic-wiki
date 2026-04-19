@@ -226,6 +226,7 @@ async def test_doi_to_bibtex_empty_paper_id_returns_error():
         result = await doi_to_bibtex("10.1/foo", "")
     assert "error" in result
     assert "paper_id is required" in result["error"]
+    assert result["doi"] == "10.1/foo"
     mock_get.assert_not_called()
 
 

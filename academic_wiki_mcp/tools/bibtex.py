@@ -9,6 +9,8 @@ from academic_wiki_mcp import bibtex, mcp, s2_client
 
 log = logging.getLogger(__name__)
 
+# \d+ is intentionally looser than Crossref's \d{4,9} so that test-stub DOIs
+# (e.g. "10.1/foo") are accepted. Real DOIs always have at least 4 digits.
 _DOI_PAT = re.compile(r"^10\.\d+/")
 _DOI_ORG_TIMEOUT = 15
 
@@ -64,7 +66,7 @@ async def doi_to_bibtex(doi: str, paper_id: str) -> dict:
       or {"error": "...", "doi": doi} on total failure.
     """
     if not paper_id:
-        return {"error": "paper_id is required"}
+        return {"error": "paper_id is required", "doi": doi}
     if not doi or not _DOI_PAT.match(doi):
         return {"error": "invalid DOI", "doi": doi}
 
