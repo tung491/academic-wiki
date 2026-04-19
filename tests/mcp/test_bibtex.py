@@ -330,3 +330,27 @@ async def test_doi_to_bibtex_falls_back_when_bibtex_is_unparseable():
     with patch("requests.get", side_effect=side):
         result = await doi_to_bibtex("10.1/foo", "key1")
     assert result["source"] == "semantic_scholar"
+
+
+async def test_doi_to_bibtex_total_failure():
+    # doi.org 404, S2 also returns no paper (None from get_paper_by_doi)
+    side = _route(_make_doi_org_resp(404), _make_doi_org_resp(404))
+    # The S2 path goes through _s2_get → 404 → returns response with status 404
+    # → get_paper_by_doi returns None → _try_s2_fallback returns the error dict.
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/missing", "key1")
+    assert "error" in result
+    assert "DOI not found" in result["error"]
+    assert result["doi"] == "10.1/missing"
+
+
+async def test_doi_to_bibtex_s2_incomplete_metadata():
+    incomplete = dict(_S2_GOOD)
+    incomplete["year"] = None  # missing year → build_from_metadata raises
+    side = _route(_make_doi_org_resp(404), _make_s2_resp(incomplete))
+    with patch("requests.get", side_effect=side):
+        result = await doi_to_bibtex("10.1/foo", "key1")
+    assert "error" in result
+    assert "S2 metadata incomplete" in result["error"]
+    assert "partial" in result
+    assert result["partial"]["title"] == "Fallback Title"
