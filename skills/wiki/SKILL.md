@@ -305,6 +305,17 @@ Default compile runs the full pipeline: paper pages + entity extraction + cites 
 
 For detailed behavior see `references/compilation-guide.md`.
 
+### Routing
+
+1. If `<paper-id>` is given: use the sequential path below (unchanged).
+2. If no `<paper-id>`:
+   a. Check for existing checkpoint via `read_checkpoint()`.
+      - If found with `status: in-progress`: enter resume flow (see `references/compilation-guide.md` "Resume flow").
+      - If found and stale (>24h): prompt user — resume or start fresh.
+   b. If no checkpoint: scan pending papers via `find_all_extracts()` + compare against `wiki/papers/`.
+      - If ≤5 pending: use sequential path below.
+      - If >5 pending: enter batch mode (see `references/compilation-guide.md` "Batch compile mode").
+
 ### Setup variables
 
     PY=~/.venv/bin/python
@@ -412,6 +423,22 @@ For detailed behavior see `references/compilation-guide.md`.
     Use `compile: paper-only <N> papers: ...` when `--paper-only` was set.
 
 11. **Release lock** (trap handles this on exit).
+
+### Steps (batch mode)
+
+Batch mode replaces the per-paper loop with wave-based parallel subagents. Full orchestration logic is in `references/compilation-guide.md` "Batch compile mode". Summary:
+
+1. **Acquire lockfile** (same as sequential path).
+2. **Create or resume checkpoint** at `outputs/.compile-checkpoint.yml`.
+3. **Partition pending papers into waves** (~200 papers per wave, 10-15 subagents per wave).
+4. **For each wave:** spawn Sonnet subagents in parallel (`run_in_background: true`, `model: "sonnet"`, `mode: "auto"`). Each subagent receives a batch of `{paper-id, extract-path}` tuples and the self-contained prompt from `references/batch-compile-prompt.md`. Subagents write `wiki/papers/<paper-id>.md` and `wiki/venues/<venue-slug>.md` files directly.
+5. **Collect results:** parse subagent output, update checkpoint, commit wave.
+6. **Retry failed papers** in a single retry wave.
+7. **Squash wave commits** into one commit (fall back to keeping wave commits if squash fails).
+8. **Update index.md + log.md**, delete checkpoint, final commit.
+9. **Release lockfile.**
+
+Batch mode is paper-only tier only. `--paper-only` is implicit; Wave 2 full-tier batch is future work.
 
 ### Update conflict policy (applies to every wiki page updated by compile)
 
