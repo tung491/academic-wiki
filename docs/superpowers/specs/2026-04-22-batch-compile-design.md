@@ -14,7 +14,7 @@ Lightweight coordinator that never touches paper content directly:
 
 1. Acquires wiki lockfile (`op=compile`)
 2. Reads or creates checkpoint at `outputs/.compile-checkpoint.yml`
-3. Scans `raw/extracts/*.md` vs `wiki/papers/*.md` to build the pending list
+3. Scans `raw/extracts/*.md` vs `wiki/papers/*.md` to build the pending list as `{paper-id, extract-path}` tuples (the orchestrator resolves paths so subagents don't need to)
 4. Partitions pending papers into waves of ~200 (10-15 subagents x 15-20 papers each)
 5. Spawns Sonnet subagents in parallel per wave (`run_in_background: true`)
 6. Collects results as agents complete, updates checkpoint, commits wave
@@ -25,8 +25,8 @@ Lightweight coordinator that never touches paper content directly:
 
 Self-contained agent that reads extracts and writes paper pages:
 
-- Receives: wiki path, list of paper-ids, compilation rules + frontmatter schema
-- For each paper-id: reads extract, optionally reads notes, generates paper page, writes to disk
+- Receives: wiki path, list of `{paper-id, extract-path}` tuples, compilation rules + frontmatter schema
+- For each entry: reads extract at the given path, optionally reads `raw/notes/<paper-id>.md`, generates paper page, writes to disk
 - Returns: short status summary (`ok: id1, id2, ...` / `failed: id3 (reason)`)
 - Does NOT touch: checkpoint, index.md, log.md, git
 
@@ -61,7 +61,7 @@ run-id: "2026-04-22T14:30:00Z"
 status: in-progress          # in-progress | completed | failed
 total: 1024
 wave-size: 200
-current-wave: 3
+last-completed-wave: 2       # 0-indexed; next wave to run = last-completed-wave + 1
 papers:
   abdullatifIcc20242024: ok
   abhijan202517thInternational2025: ok
@@ -78,8 +78,8 @@ wave-commits:
 ### Lifecycle
 
 1. **Create** -- orchestrator creates checkpoint at start. All pending papers set to `pending`. Records `squash-base` as current HEAD.
-2. **Update after each wave** -- flip completed papers to `ok` or `failed`, append wave commit SHA, bump `current-wave`.
-3. **Resume** -- if `compile` is invoked and a checkpoint with `status: in-progress` exists, skip `ok` papers, retry `failed` papers, continue from `current-wave`.
+2. **Update after each wave** -- flip completed papers to `ok` or `failed`, append wave commit SHA, bump `last-completed-wave`.
+3. **Resume** -- if `compile` is invoked and a checkpoint with `status: in-progress` exists, skip `ok` papers, retry `failed` papers, continue from `last-completed-wave + 1`.
 4. **Complete** -- after all waves finish, set `status: completed`, squash wave commits, delete checkpoint file.
 5. **Stale detection** -- if checkpoint `run-id` is >24h old and status is `in-progress`, warn user and ask whether to resume or start fresh.
 
@@ -90,7 +90,7 @@ wave-commits:
 Each subagent prompt includes:
 
 - `WIKI_ROOT` path
-- List of paper-ids to compile (15-20 per agent)
+- List of `{paper-id, extract-path}` tuples (15-20 per agent). The orchestrator resolves extract paths before dispatching so subagents don't need path-discovery logic.
 - Paper page frontmatter schema (type, fields, allowed values)
 - Body section template: Metadata / Summary / Key Contributions / Methods / Results / Claims / User Notes / See Also
 - Rules for deriving: `citation-key` (BibTeX-native, no hyphens), `authors` slugs (ASCII-folded, hyphenated), `tags` (field/*, method/*, year/YYYY, venue/slug), `status` (read if notes present and >200 chars, else skimmed)
@@ -146,9 +146,19 @@ git -C "$WIKI_ROOT" add wiki/index.md log.md outputs/
 git -C "$WIKI_ROOT" commit -m "compile: update index + log (1024 papers)"
 ```
 
+### Squash failure recovery
+
+If `git reset --soft` fails (dirty tree, detached HEAD, etc.):
+
+1. Abort the squash — do not leave the repo in an intermediate state
+2. Fall back to keeping wave commits as-is (the paper pages are already correct)
+3. Create the bookkeeping commit (index.md + log.md) on top of the last wave commit
+4. Print a warning: `Squash failed (<reason>). Wave commits preserved. Papers compiled successfully.`
+5. Delete the checkpoint (the compile itself succeeded; only the cosmetic squash failed)
+
 ### On partial failure
 
-No squash. Wave commits stay as-is. Checkpoint remains with `status: in-progress`. Next `compile` picks up where it left off. Squash only happens when all papers reach `ok` or user explicitly accepts.
+No squash. Wave commits stay as-is. Checkpoint remains with `status: in-progress`. Next `compile` picks up where it left off. Squash only happens when all papers reach `ok`.
 
 ## 5. Error Handling and Resume
 
@@ -207,6 +217,11 @@ The existing steps 1-7 are wrapped in the routing layer described in Section 1. 
 - Lockfile semantics -- acquired at start, released at end
 - Update conflict policy -- subagents follow same rules
 - `--paper-only` flag -- batch mode is paper-only tier only
+
+### What changes in batch mode vs sequential path
+
+- The sequential-path per-paper git commit (SKILL.md step 6) is **replaced** by wave-level commits. Subagents write files; the orchestrator commits.
+- Index.md and log.md updates happen **once at the end** instead of per-paper.
 
 ### User-facing output
 
