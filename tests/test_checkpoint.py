@@ -8,6 +8,8 @@ import yaml
 
 from academic_wiki_lib.checkpoint import (
     create_checkpoint,
+    delete_checkpoint,
+    get_pending_papers,
     read_checkpoint,
     write_checkpoint,
     update_paper_statuses,
@@ -91,8 +93,22 @@ class TestIsStale:
 
 class TestDeleteCheckpoint:
     def test_delete_removes_file(self, wiki_dir):
-        from academic_wiki_lib.checkpoint import delete_checkpoint
         papers = [("p1", "/x")]
         create_checkpoint(wiki_dir, papers, wave_size=1)
         delete_checkpoint(wiki_dir)
         assert read_checkpoint(wiki_dir) is None
+
+
+class TestGetPendingPapers:
+    def test_returns_pending_and_failed(self, wiki_dir):
+        papers = [("p1", "/x"), ("p2", "/y"), ("p3", "/z")]
+        create_checkpoint(wiki_dir, papers, wave_size=3)
+        results = {"p1": ("ok", None), "p2": ("failed", "err")}
+        update_paper_statuses(wiki_dir, results, wave_commit_sha="abc")
+        pending = get_pending_papers(wiki_dir)
+        assert "p2" in pending
+        assert "p3" in pending
+        assert "p1" not in pending
+
+    def test_returns_empty_when_no_checkpoint(self, wiki_dir):
+        assert get_pending_papers(wiki_dir) == []
