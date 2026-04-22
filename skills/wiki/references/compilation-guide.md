@@ -68,3 +68,84 @@ Key principles:
 6. **Do not change `created:`** — it reflects first creation, never re-bumps.
 7. **Aliases:** if a rename/merge happens during update, add the former slug to the target page's `aliases: []`. Lint resolves `[[old-slug]]` via alias lookup.
 8. **Log the merge** — commit message summarizes: `compile: merged <new-paper-id> into <N> existing pages`.
+
+## Batch compile mode
+
+Batch mode orchestrates parallel Sonnet subagents for bulk compilation. The subagents handle per-paper work (steps 1–5 + 4b from *Per-source steps*). The orchestrator handles checkpoint management, wave coordination, git commits, and index/log updates.
+
+### Activation
+
+- Batch mode activates when **no `<paper-id>` argument is given** AND the count of pending papers is **>5**.
+- If a checkpoint file exists with `status: in-progress`, enter the **resume flow** instead (see *Resume flow* below).
+- Papers ≤5: use the existing sequential path — no subagents.
+
+### Checkpoint management
+
+Use `academic_wiki_lib.checkpoint` for all checkpoint operations. Follow the same Python invocation style used elsewhere in the skill:
+
+```bash
+"$PY" -c "
+import sys; sys.path.insert(0, '${PYTHONPATH}')
+from academic_wiki_lib.checkpoint import create_checkpoint, read_checkpoint
+..."
+```
+
+- **Create** a checkpoint at the start of a fresh batch run, recording `squash-base` as the current `HEAD` SHA.
+- **Update** the checkpoint after each wave completes, saving per-paper `ok`/`failed` statuses and `last-completed-wave`.
+- **Delete** the checkpoint file on successful completion (all papers `ok`).
+
+### Wave partitioning
+
+1. Call `find_all_extracts(wiki_root)` to obtain all `(paper_id, md_path)` tuples.
+2. Filter out any `paper_id` already marked `ok` in the checkpoint (resume case).
+3. From the remaining papers, keep only those where the extract is **newer** than the paper page (compare `extracted-at` frontmatter vs `updated:` on `wiki/papers/<paper-id>.md`) **or** the paper page does not yet exist.
+4. Partition into waves using the `wave-size` field in the checkpoint, which stores **papers per wave** (not agent count):
+   - `papers_per_wave = min(len(pending), 15 * 20)` — target ~200 papers per wave (15 subagents × 20 papers each = 300 max; ~200 preferred for balance).
+   - Split each wave into subagent batches of `ceil(papers_per_wave / 15)` papers each, capped at **20 papers per subagent**.
+   - Each wave is a list of subagent batches, where each batch is a list of `{paper-id, extract-path}` tuples.
+
+### Subagent dispatch
+
+For each wave, spawn all subagents **in a single message** (parallel tool calls) using the Agent tool:
+
+- `model: "sonnet"`
+- `mode: "auto"`
+- `run_in_background: true`
+- Prompt: read `references/batch-compile-prompt.md`, replace `{{WIKI_ROOT}}` with the actual wiki root path and `{{PAPER_LIST}}` with the JSON-serialised batch for that subagent.
+
+Wait for all subagents in the wave to complete before proceeding (Claude Code notifies on completion).
+
+### Result collection
+
+After all subagents in a wave finish:
+
+1. Parse each subagent's return text for `ok:` and `failed:` lines.
+2. Call `update_paper_statuses()` with the aggregated results.
+3. Commit the wave: `git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ outputs/.compile-checkpoint.yml`
+
+### Retry wave
+
+After all main waves complete:
+
+1. Collect papers with `failed` status via `get_pending_papers()`.
+2. If any exist, spawn one more wave of subagents for retry (same dispatch logic).
+3. Papers that fail the retry wave stay `failed` — print the list for the user. Do not raise an error.
+
+### Squash and finalize
+
+When all papers are `ok`:
+
+1. `git reset --soft <squash-base>` then commit with a single compile message.
+2. If the squash fails: print a warning, keep the per-wave commits, and proceed with bookkeeping.
+3. Update `wiki/index.md` — append new papers under `## Uncategorized` (same as `--paper-only` mode step 10).
+4. Append to `log.md`: `## [YYYY-MM-DD] compile | N paper pages created/updated`.
+5. Delete the checkpoint file.
+6. Final commit: `compile: update index + log (N papers)`.
+
+### Resume flow
+
+Triggered when `read_checkpoint()` finds an existing checkpoint with `status: in-progress`.
+
+1. Call `is_stale()` on the checkpoint — if stale, prompt the user before continuing.
+2. Re-scan `raw/extracts/` for new papers added since checkpoint creation; append them to the pending list.
+3. Continue from `last-completed-wave + 1`, skipping any `paper_id` already marked `ok` in the checkpoint.
