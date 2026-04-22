@@ -176,9 +176,14 @@ identifiers:
   url: <value or null>
 aliases: []
 source-version: <value>
+relationships:                          # optional — omit entirely if unknown
+  preprint-of: null
+  version-of: null
+  supersedes: []
 bib-file: raw/bib/<paper-id>.bib
 extract: raw/extracts/<paper-id>.md
-notes: raw/notes/<paper-id>.md
+notes: raw/notes/<paper-id>.md          # omit if raw/notes/<paper-id>.md does not exist
+figures: raw/figures/<paper-id>/        # omit if directory is empty or does not exist
 references-raw:
   - "<verbatim reference string 1>"
   - "<verbatim reference string 2>"
