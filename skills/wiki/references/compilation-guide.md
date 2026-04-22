@@ -100,7 +100,7 @@ from academic_wiki_lib.checkpoint import create_checkpoint, read_checkpoint
 2. Filter out any `paper_id` already marked `ok` in the checkpoint (resume case).
 3. From the remaining papers, keep only those where the extract is **newer** than the paper page (compare `extracted-at` frontmatter vs `updated:` on `wiki/papers/<paper-id>.md`) **or** the paper page does not yet exist.
 4. Partition into waves using the `wave-size` field in the checkpoint, which stores **papers per wave** (not agent count):
-   - `papers_per_wave = min(len(pending), 15 * 20)` — target ~200 papers per wave (15 subagents × 20 papers each = 300 max; ~200 preferred for balance).
+   - Target ~200 papers per wave: `papers_per_wave = min(len(pending), 200)`. (Capacity is 15 subagents × 20 papers = 300, but ~200 gives better balance and keeps context manageable.)
    - Split each wave into subagent batches of `ceil(papers_per_wave / 15)` papers each, capped at **20 papers per subagent**.
    - Each wave is a list of subagent batches, where each batch is a list of `{paper-id, extract-path}` tuples.
 
@@ -121,7 +121,11 @@ After all subagents in a wave finish:
 
 1. Parse each subagent's return text for `ok:` and `failed:` lines.
 2. Call `update_paper_statuses()` with the aggregated results.
-3. Commit the wave: `git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ outputs/.compile-checkpoint.yml`
+3. Stage and commit the wave:
+   ```bash
+   git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ outputs/.compile-checkpoint.yml
+   git -C "$WIKI_ROOT" commit -m "compile: wave N/M (X papers, Y ok, Z failed)"
+   ```
 
 ### Retry wave
 
@@ -147,5 +151,5 @@ When all papers are `ok`:
 Triggered when `read_checkpoint()` finds an existing checkpoint with `status: in-progress`.
 
 1. Call `is_stale()` on the checkpoint — if stale, prompt the user before continuing.
-2. Re-scan `raw/extracts/` for new papers added since checkpoint creation; append them to the pending list.
+2. Re-scan for new papers via `find_all_extracts(wiki_root)` (covers both `raw/extracts/` and `raw/papers/*/` clipper directories); append any new paper-ids not in the checkpoint to the pending list.
 3. Continue from `last-completed-wave + 1`, skipping any `paper_id` already marked `ok` in the checkpoint.
