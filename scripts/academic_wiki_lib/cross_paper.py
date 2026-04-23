@@ -5,7 +5,6 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Any
 
 from academic_wiki_lib import entity_lock
 from academic_wiki_lib.frontmatter import read_frontmatter
@@ -80,7 +79,7 @@ def _render_entry(entry: dict[str, str]) -> str:
 
 
 _ENTRY_KEY_PATTERN = re.compile(
-    r"- \*\*Type:\*\* (?P<type>\w+)\s*\n"
+    r"- \*\*Type:\*\* (?P<type>[\w-]+)\s*\n"
     r"- \*\*Paper A:\*\* \[\[(?P<a>[^\]]+)\]\].*?\n"
     r"- \*\*Paper B:\*\* \[\[(?P<b>[^\]]+)\]\]",
     flags=re.DOTALL,
@@ -120,6 +119,3 @@ def append_candidates(wiki_root, entries: list[dict[str, str]]) -> None:
             existing_keys.add(key)
         if new_rendered:
             path.write_text(existing + "".join(new_rendered))
-        elif not path.exists():
-            # Ensure file exists with header even if everything was deduped
-            path.write_text(existing)
