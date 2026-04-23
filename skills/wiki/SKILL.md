@@ -431,14 +431,20 @@ Batch mode replaces the per-paper loop with wave-based parallel subagents. Full 
 1. **Acquire lockfile** (same as sequential path).
 2. **Create or resume checkpoint** at `outputs/.compile-checkpoint.yml`.
 3. **Partition pending papers into waves** (~200 papers per wave, 10-15 subagents per wave).
-4. **For each wave:** spawn Sonnet subagents in parallel (`run_in_background: true`, `model: "sonnet"`, `mode: "auto"`). Each subagent receives a batch of `{paper-id, extract-path}` tuples and the self-contained prompt from `references/batch-compile-prompt.md`. Subagents write `wiki/papers/<paper-id>.md` and `wiki/venues/<venue-slug>.md` files directly.
+4. **For each wave:** spawn Sonnet subagents in parallel (`run_in_background: true`, `model: "sonnet"`, `mode: "auto"`). Each subagent receives a batch of `{paper-id, extract-path}` tuples. For full-tier batches, use `references/batch-compile-full-prompt.md` (interpolating `{{PRE_BATCH_PAPERS}}`, `{{PRE_BATCH_SNAPSHOT_PATH}}`, `{{TODAY}}`, plus the existing `{{WIKI_ROOT}}`, `{{PAPER_LIST}}`, `{{PYTHONPATH}}`); for paper-only, use `references/batch-compile-prompt.md`. Subagents write `wiki/papers/`, `wiki/venues/`, and — for full-tier — `wiki/concepts/`, `wiki/methods/`, `wiki/open-problems/`, and candidate entries under `outputs/reports/`.
 5. **Collect results:** parse subagent output, update checkpoint, commit wave.
 6. **Retry failed papers** in a single retry wave.
+6b. **Final orchestrator pass** (full-tier only): resolve intra-batch cites + backlinks. See compilation-guide.md "Final orchestrator pass (full-tier only)". Transitions `final-pass-status` from `pending` to `in-progress` to `ok`.
 7. **Squash wave commits** into one commit (fall back to keeping wave commits if squash fails).
 8. **Update index.md + log.md**, delete checkpoint, final commit.
 9. **Release lockfile.**
 
-Batch mode is paper-only tier only. `--paper-only` is implicit; Wave 2 full-tier batch is future work.
+Batch mode honors the `--paper-only` flag the same way the sequential path does:
+
+- Without `--paper-only`: **full-tier batch** (paper pages + entity extraction + cites + backlinks + cross-paper candidates). See `references/compilation-guide.md` "Batch compile mode" for full orchestration.
+- With `--paper-only`: paper-only batch (paper + venue pages only).
+
+The `tier:` field on the checkpoint drives template selection on resume.
 
 ### Update conflict policy (applies to every wiki page updated by compile)
 
