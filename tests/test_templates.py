@@ -11,6 +11,11 @@ from academic_wiki_lib.templates import (
 )
 
 
+def test_gitignore_template_includes_locks_and_snapshot():
+    assert ".locks/" in GITIGNORE
+    assert "outputs/.pre-batch-snapshot.yml" in GITIGNORE
+
+
 def test_all_subdirs_matches_spec():
     """Must match the 16 subdirectories in spec §2.2."""
     expected = {

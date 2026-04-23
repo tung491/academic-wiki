@@ -43,6 +43,8 @@ One-line description.
 
 GITIGNORE = """.DS_Store
 .lock
+.locks/
+outputs/.pre-batch-snapshot.yml
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
