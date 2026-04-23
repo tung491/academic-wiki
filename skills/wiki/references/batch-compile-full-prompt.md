@@ -436,15 +436,15 @@ for t in (data.get('targets') or []):
 "
 ```
 
-This prints one absolute file path per line. Store this list in memory as `snapshot_targets`.
+This prints one **relative** path (e.g., `wiki/papers/foo.md`) per line. Store this list in memory as `snapshot_targets`.
 
-2. **For each entity `(slug, kind)` in `created_entities`**, scan `snapshot_targets` for prose mentions:
+2. **For each entity `(slug, kind)` in `created_entities`**, scan `snapshot_targets` for prose mentions. Since the paths are relative to the wiki root, prepend `{{WIKI_ROOT}}/` when invoking `rg`:
 
 ```bash
-rg --fixed-strings -l "<slug with hyphens replaced by spaces>" <target_path>
+rg --fixed-strings -q "<slug with hyphens replaced by spaces>" "{{WIKI_ROOT}}/<target_path>"
 ```
 
-Run this for each target path. Collect matching file paths.
+`-q` exits 0 on match, non-zero otherwise. Run this per target; collect the relative paths where it succeeds.
 
 3. **LLM confirmation**: for each matching file, read its content and confirm the mention is in prose (not a code block, YAML frontmatter, or citation list). Reject false positives.
 
@@ -494,17 +494,20 @@ for n in neighbors:
    - **Contradiction**: two papers report conflicting results or assert opposite conclusions on the same question.
    - **Threshold**: "Only flag if a human researcher would agree this is the same claim restated or a direct contradiction." Do not flag thematic similarity or topical overlap alone.
 
-4. **Accumulate candidates in memory** as a list of entry objects (do not write to disk during this step):
+4. **Accumulate candidates in memory** as a list of entry objects matching the schema `append_candidates` expects (do not write to disk during this step):
 ```json
 {
+  "description": "<one-line description of the candidate>",
+  "type": "claim|result",
   "paper_a": "<paper-id>",
   "paper_b": "<neighbor-paper-id>",
-  "kind": "equivalence|contradiction",
-  "claim_a": "<verbatim or paraphrased claim from paper A>",
-  "claim_b": "<verbatim or paraphrased claim from paper B>",
-  "confidence": "high|medium"
+  "quote_a": "<verbatim or paraphrased claim from paper A>",
+  "quote_b": "<verbatim or paraphrased claim from paper B>",
+  "relationship": "equivalent|contradiction"
 }
 ```
+
+All seven keys are required — `append_candidates` KeyErrors on missing keys.
 
 5. **After all papers have been processed**, make a **single** call to `append_candidates`:
 
