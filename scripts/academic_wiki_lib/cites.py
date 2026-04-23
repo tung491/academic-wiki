@@ -26,8 +26,8 @@ except ImportError:
         diff_b = tokens_b - tokens_a
 
         s1 = " ".join(sorted(intersection))
-        s2 = (s1 + " " + " ".join(sorted(diff_a))).strip()
-        s3 = (s1 + " " + " ".join(sorted(diff_b))).strip()
+        s2 = " ".join(sorted(intersection | diff_a))
+        s3 = " ".join(sorted(intersection | diff_b))
 
         return max(
             SequenceMatcher(None, s1, s2).ratio(),

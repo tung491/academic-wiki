@@ -51,7 +51,8 @@ class TestResolveCites:
         refs = ["Author. Attention Mechanism Survey. 2020."]
         pre_batch = [f"p{i}" for i in range(10)]
         result = resolve_cites(wiki_dir, refs, pre_batch)
-        assert len(result[refs[0]]) <= 5
+        # All 10 candidates score above 0.80; cap must truncate to exactly 5
+        assert len(result[refs[0]]) == 5
 
     def test_results_sorted_by_score_desc(self, wiki_dir):
         _make_paper(wiki_dir, "close", "Attention Is All You Need", "Vaswani", 2017)
