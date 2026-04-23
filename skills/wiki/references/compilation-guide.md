@@ -78,6 +78,7 @@ Batch mode orchestrates parallel Sonnet subagents for bulk compilation. The suba
 - Batch mode activates when **no `<paper-id>` argument is given** AND the count of pending papers is **>5**.
 - If a checkpoint file exists with `status: in-progress`, enter the **resume flow** instead (see *Resume flow* below).
 - Papers ≤5: use the existing sequential path — no subagents.
+- Activation selects **full-tier** when invoked without `--paper-only` and **paper-only** when `--paper-only` is set; resume reads the checkpoint's `tier:` field to pick the right template.
 
 ### Checkpoint management
 
@@ -94,6 +95,18 @@ from academic_wiki_lib.checkpoint import create_checkpoint, read_checkpoint
 - **Update** the checkpoint after each wave completes, saving per-paper `ok`/`failed` statuses and `last-completed-wave`.
 - **Delete** the checkpoint file on successful completion (all papers `ok`).
 
+**New checkpoint fields for full-tier:**
+
+| Field | Values | Purpose |
+|---|---|---|
+| `tier` | `full` / `paper-only` | Determines which subagent prompt template to use; written at creation time |
+| `pre-batch-paper-ids` | list of paper-id strings | Paper IDs present in `wiki/papers/` before the batch started; used by the final pass to distinguish intra-batch from pre-existing papers |
+| `final-pass-status` | `pending` / `in-progress` / `ok` / `failed` | Tracks state of the final orchestrator pass (intra-batch cites + backlinks); only present for full-tier checkpoints |
+
+Use `update_final_pass_status(wiki_root, status)` from `academic_wiki_lib.checkpoint` to transition `final-pass-status` — never edit the checkpoint YAML directly.
+
+Note: `pre-batch-backlink-targets` is **not** stored in the checkpoint. It lives in a separate file `outputs/.pre-batch-snapshot.yml`, written by the snapshot helper before Wave 1 (see *Pre-batch snapshot* below).
+
 ### Wave partitioning
 
 1. Call `find_all_extracts(wiki_root)` to obtain all `(paper_id, md_path)` tuples.
@@ -104,6 +117,37 @@ from academic_wiki_lib.checkpoint import create_checkpoint, read_checkpoint
    - Split each wave into subagent batches of `ceil(papers_per_wave / 15)` papers each, capped at **20 papers per subagent**.
    - Each wave is a list of subagent batches, where each batch is a list of `{paper-id, extract-path}` tuples.
 
+**Full-tier vs. paper-only sizing:**
+
+- **Full-tier:** wave-size is ~100 papers (10 subagents × 10 papers each). Each subagent's batch is capped at **10 papers** to keep entity extraction + backlink context manageable.
+- **Paper-only:** wave-size is ~200 papers (15 subagents × 20 papers each; original values above).
+
+### Pre-batch snapshot (full-tier only)
+
+Before dispatching Wave 1 on a **fresh full-tier** batch run, capture the vault state so the final pass can distinguish intra-batch work from pre-existing pages:
+
+1. Compute the list of paper IDs already on disk:
+   ```python
+   from pathlib import Path
+   pre_batch_paper_ids = [Path(p).stem for p in sorted(Path(wiki_root, "wiki/papers").glob("*.md"))]
+   ```
+2. Compute the current backlink target set:
+   ```python
+   from academic_wiki_lib.pre_batch_snapshot import scan_targets
+   backlink_targets = scan_targets(wiki_root)
+   ```
+3. Write the snapshot file (`outputs/.pre-batch-snapshot.yml`):
+   ```python
+   from academic_wiki_lib.pre_batch_snapshot import write_snapshot
+   write_snapshot(wiki_root, backlink_targets)
+   ```
+4. Store `pre_batch_paper_ids` in the checkpoint at creation time:
+   ```python
+   create_checkpoint(..., tier='full', pre_batch_paper_ids=pre_batch_paper_ids)
+   ```
+
+This step is skipped for paper-only batches and skipped on resume (snapshot already exists from the original run; see *Resume flow* for missing-snapshot handling).
+
 ### Subagent dispatch
 
 For each wave, spawn all subagents **in a single message** (parallel tool calls) using the Agent tool:
@@ -111,7 +155,15 @@ For each wave, spawn all subagents **in a single message** (parallel tool calls)
 - `model: "sonnet"`
 - `mode: "auto"`
 - `run_in_background: true`
-- Prompt: read `references/batch-compile-prompt.md`, replace `{{WIKI_ROOT}}` with the actual wiki root path and `{{PAPER_LIST}}` with the JSON-serialised batch for that subagent.
+- **Template selection:** use `references/batch-compile-full-prompt.md` for full-tier batches; use `references/batch-compile-prompt.md` for paper-only batches.
+- For **full-tier**, the orchestrator interpolates these placeholders before dispatch:
+  - `{{WIKI_ROOT}}` — absolute path to the wiki root
+  - `{{PAPER_LIST}}` — JSON-serialised list of `{paper-id, extract-path}` tuples for this subagent's batch
+  - `{{PRE_BATCH_PAPERS}}` — JSON-serialised `pre_batch_paper_ids` list from the checkpoint
+  - `{{PRE_BATCH_SNAPSHOT_PATH}}` — absolute path to `outputs/.pre-batch-snapshot.yml`
+  - `{{PYTHONPATH}}` — path to insert at `sys.path[0]` so subagents can import `academic_wiki_lib`
+  - `{{TODAY}}` — ISO date string (e.g. `2026-04-23`)
+- For **paper-only**, interpolate only `{{WIKI_ROOT}}` and `{{PAPER_LIST}}` (as before).
 
 Wait for all subagents in the wave to complete before proceeding (Claude Code notifies on completion).
 
@@ -123,9 +175,10 @@ After all subagents in a wave finish:
 2. Call `update_paper_statuses()` with the aggregated results.
 3. Stage and commit the wave:
    ```bash
-   git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ outputs/.compile-checkpoint.yml
+   git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ wiki/concepts/ wiki/methods/ wiki/open-problems/ outputs/.compile-checkpoint.yml outputs/reports/
    git -C "$WIKI_ROOT" commit -m "compile: wave N/M (X papers, Y ok, Z failed)"
    ```
+   Note: paper-only tier never writes to `wiki/concepts/`, `wiki/methods/`, `wiki/open-problems/`, or `outputs/reports/`, so the extra paths are harmless no-ops for that tier.
 
 ### Retry wave
 
@@ -134,6 +187,32 @@ After all main waves complete:
 1. Collect papers with `failed` status via `get_pending_papers()`.
 2. If any exist, spawn one more wave of subagents for retry (same dispatch logic).
 3. Papers that fail the retry wave stay `failed` — print the list for the user. Do not raise an error.
+
+### Final orchestrator pass (full-tier only)
+
+After all subagent waves (including any retry wave) complete for a **full-tier** batch, the orchestrator runs one additional sequential pass before squashing:
+
+1. **Transition state:** call `update_final_pass_status(wiki_root, 'in-progress')` to record that the pass has started (allows clean resume if interrupted).
+
+2. **Intra-batch cites:** for each paper in the batch that has status `ok` in the checkpoint:
+   - Re-read that paper's `references-raw` frontmatter field.
+   - Call `resolve_cites(wiki_root, refs, batch_paper_ids)` where `batch_paper_ids` is the set of all `ok` paper IDs in the current checkpoint. The helper fuzzy-matches each raw reference against both pre-existing and newly-created paper pages.
+   - Append approved matches to the paper's `cites:` list (dedup, preserve order). Write the updated frontmatter back to disk.
+
+3. **Intra-batch backlinks:** discover entity pages created during this batch by diffing against the squash base:
+   ```bash
+   git -C "$WIKI_ROOT" log --diff-filter=A --name-only <squash-base>..HEAD -- wiki/concepts/ wiki/methods/ wiki/open-problems/
+   ```
+   For each newly-created entity page, derive its slug from the filename stem, then call `insert_backlink(wiki_root, target_path, entity_slug)` against each in-batch paper page to add `[[entity-slug]]` wikilinks where appropriate.
+
+4. **On success:**
+   - Call `update_final_pass_status(wiki_root, 'ok')`.
+   - Commit: `compile: final pass (intra-batch cites + backlinks)`.
+
+5. **On any exception:**
+   - Call `update_final_pass_status(wiki_root, 'failed')`.
+   - Do **not** squash; surface the exception to the user with full traceback.
+   - Resume will re-run the entire final pass (all steps are idempotent — dedup guards prevent duplicate `cites:` entries or double-inserted wikilinks).
 
 ### Squash and finalize
 
@@ -153,3 +232,33 @@ Triggered when `read_checkpoint()` finds an existing checkpoint with `status: in
 1. Call `is_stale()` on the checkpoint — if stale, prompt the user before continuing.
 2. Re-scan for new papers via `find_all_extracts(wiki_root)` (covers both `raw/extracts/` and `raw/papers/*/` clipper directories); append any new paper-ids not in the checkpoint to the pending list.
 3. Continue from `last-completed-wave + 1`, skipping any `paper_id` already marked `ok` in the checkpoint.
+4. If `tier: full`, use `references/batch-compile-full-prompt.md` for all subagent dispatch on resume (same as the original run).
+5. **Validate previously-ok papers:** for each paper marked `ok` in the checkpoint, verify that `wiki/papers/<paper-id>.md` still exists on disk. If any are missing (e.g. user deleted files between runs), demote their status back to `pending` and include them in the next dispatch wave. Emit a `stderr` warning line for each demoted paper.
+6. **Fast-path to final pass:** if `final-pass-status` is `pending` or `failed` AND all papers in the checkpoint are `ok` (none are `pending` or `failed`), skip subagent dispatch entirely and jump straight to the *Final orchestrator pass* step.
+7. **Missing snapshot handling:** if `outputs/.pre-batch-snapshot.yml` does not exist on resume (e.g. deleted by the user), re-derive the backlink targets via `pre_batch_snapshot.scan_targets(wiki_root)` and write a fresh snapshot with a warning: `"Warning: .pre-batch-snapshot.yml missing; re-derived from current vault state — backlink target set may drift from batch-start state, but resume will proceed."` The `pre_batch_paper_ids` in the checkpoint are authoritative and are **not** re-derived.
+
+### Finalize (full-tier)
+
+After the final orchestrator pass reaches `final-pass-status: ok`:
+
+1. **Delete the snapshot file:**
+   ```python
+   from academic_wiki_lib.pre_batch_snapshot import delete_snapshot
+   delete_snapshot(wiki_root)   # removes outputs/.pre-batch-snapshot.yml
+   ```
+
+2. **Proceed with squash + bookkeeping** using the existing *Squash and finalize* flow (same steps, applies to both tiers). For full-tier, step 3 (index rebuild) uses the full-mode path from step 10 of *Shared final steps*: rebuild `wiki/index.md` by `field/*` tag rather than appending under `## Uncategorized`.
+
+3. **Roll up aggregate counters** from all subagent RESULTS blocks across all waves and include them in the `log.md` entry and the final console output line:
+
+   | Counter | Source |
+   |---|---|
+   | `entities` | total entity pages created (concepts + methods + open-problems) |
+   | `cites` | total `cites:` entries resolved across all papers |
+   | `backlinks` | total wikilinks inserted by `insert_backlink` in the final pass |
+   | `cross-paper` | total cross-paper promotion candidates written to `outputs/reports/` |
+
+   Example log line:
+   ```
+   ## [2026-04-23] compile | 42 papers | 18 entities | 134 cites | 67 backlinks | 3 cross-paper candidates
+   ```
