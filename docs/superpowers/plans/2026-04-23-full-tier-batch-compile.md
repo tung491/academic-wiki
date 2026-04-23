@@ -1251,7 +1251,9 @@ def _render_entry(entry: dict[str, str]) -> str:
 
 
 _ENTRY_KEY_PATTERN = re.compile(
-    r"- \*\*Paper A:\*\* \[\[(?P<a>[^\]]+)\]\].*?- \*\*Paper B:\*\* \[\[(?P<b>[^\]]+)\]\].*?- \*\*Type:\*\* (?P<type>\w+)",
+    r"- \*\*Type:\*\* (?P<type>\w+)\s*\n"
+    r"- \*\*Paper A:\*\* \[\[(?P<a>[^\]]+)\]\].*?\n"
+    r"- \*\*Paper B:\*\* \[\[(?P<b>[^\]]+)\]\]",
     flags=re.DOTALL,
 )
 
@@ -1259,14 +1261,7 @@ _ENTRY_KEY_PATTERN = re.compile(
 def _existing_keys(content: str) -> set[tuple[str, str, str]]:
     """Extract (paper_a, paper_b, type) keys from existing report content."""
     keys: set[tuple[str, str, str]] = set()
-    # The entry order in the rendered file is: Type, Paper A, Paper B; so adapt pattern
-    alt_pattern = re.compile(
-        r"- \*\*Type:\*\* (?P<type>\w+)\s*\n"
-        r"- \*\*Paper A:\*\* \[\[(?P<a>[^\]]+)\]\].*?\n"
-        r"- \*\*Paper B:\*\* \[\[(?P<b>[^\]]+)\]\]",
-        flags=re.DOTALL,
-    )
-    for m in alt_pattern.finditer(content):
+    for m in _ENTRY_KEY_PATTERN.finditer(content):
         keys.add((m.group("a"), m.group("b"), m.group("type")))
     return keys
 
@@ -1421,6 +1416,10 @@ def snapshot_path(wiki_root) -> Path:
 def scan_targets(wiki_root) -> list[str]:
     """Walk wiki/{papers,concepts,methods,open-problems,venues}/ and return
     a sorted list of relative paths (e.g., 'wiki/papers/foo.md').
+
+    Scope is intentionally limited to the five directories that backlinks.py
+    can lock. wiki/claims/ and wiki/results/ exist (cross-paper promotion
+    targets) but are not auto-linked during compile.
     """
     root = Path(os.fspath(wiki_root))
     results: list[str] = []
@@ -1548,14 +1547,24 @@ Create `skills/wiki/references/batch-compile-full-prompt.md` with the following 
 
 9. **Return format.** Per spec §4.4.
 
-- [ ] **Step 3: Verify template has every section**
+- [ ] **Step 3: Verify template has every section AND every variable is used**
 
-Run a quick self-check: grep for each section header you wrote, confirm every variable reference resolves against the Inputs list.
+Run two checks:
 
 ```bash
 grep -E '^## (Step|Input|Role|Return|Header)' /home/tung491/Work/academic_wiki/skills/wiki/references/batch-compile-full-prompt.md
 ```
 Expected: at least sections for Inputs, Role/constraints, Steps 1–8, Return format.
+
+Then confirm each of the six template variables is referenced at least once in the body (not just declared in the Input section):
+
+```bash
+for var in WIKI_ROOT PAPER_LIST PRE_BATCH_PAPERS PRE_BATCH_SNAPSHOT_PATH PYTHONPATH TODAY; do
+  count=$(grep -c "{{$var}}" /home/tung491/Work/academic_wiki/skills/wiki/references/batch-compile-full-prompt.md)
+  echo "$var: $count"
+done
+```
+Expected: each variable appears at least twice (once in the Input section, once+ in body steps).
 
 - [ ] **Step 4: Commit**
 
@@ -1741,7 +1750,7 @@ Note where the `.gitignore` content is defined (likely a `GITIGNORE` constant or
 
 - [ ] **Step 2: Write a failing test for the new entries**
 
-Add to `tests/test_templates.py` (create if not present — but it exists; append a test):
+`tests/test_templates.py` already exists — append this test to it:
 
 ```python
 def test_gitignore_template_includes_locks_and_snapshot():
@@ -1842,10 +1851,12 @@ Expected: output includes `.locks/` and `outputs/.pre-batch-snapshot.yml`.
 
 - [ ] **Step 4: Commit any smoke-test fixes**
 
-If the smoke test revealed any issues, fix and commit:
+If the smoke test revealed any issues, fix the relevant files and stage only those:
 
 ```bash
-git -C /home/tung491/Work/academic_wiki add -u
+# Only stage what you actually changed — avoid `git add -u` which would
+# catch unrelated tracked-file modifications in the working tree.
+git -C /home/tung491/Work/academic_wiki add scripts/academic_wiki_lib/ tests/ skills/wiki/
 git -C /home/tung491/Work/academic_wiki commit -m "fix: address issues found during full-tier batch compile smoke test"
 ```
 
