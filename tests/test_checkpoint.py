@@ -13,6 +13,7 @@ from academic_wiki_lib.checkpoint import (
     read_checkpoint,
     write_checkpoint,
     update_paper_statuses,
+    update_final_pass_status,
     is_stale,
     CHECKPOINT_FILENAME,
 )
@@ -163,7 +164,6 @@ class TestReadCheckpointBackCompat:
 
 class TestUpdateFinalPassStatus:
     def test_sets_status(self, wiki_dir):
-        from academic_wiki_lib.checkpoint import update_final_pass_status
         papers = [("p1", "/x")]
         create_checkpoint(wiki_dir, papers, wave_size=1, tier="full",
                           pre_batch_paper_ids=[])
@@ -175,8 +175,24 @@ class TestUpdateFinalPassStatus:
         assert cp["final-pass-status"] == "ok"
 
     def test_rejects_unknown_status(self, wiki_dir):
-        from academic_wiki_lib.checkpoint import update_final_pass_status
         papers = [("p1", "/x")]
-        create_checkpoint(wiki_dir, papers, wave_size=1)
+        create_checkpoint(wiki_dir, papers, wave_size=1, tier="full")
         with pytest.raises(ValueError):
             update_final_pass_status(wiki_dir, "bogus")
+
+    def test_rejects_paper_only_checkpoint(self, wiki_dir):
+        papers = [("p1", "/x")]
+        create_checkpoint(wiki_dir, papers, wave_size=1)  # paper-only default
+        with pytest.raises(ValueError, match="tier='full'"):
+            update_final_pass_status(wiki_dir, "in-progress")
+
+    def test_raises_when_no_checkpoint(self, wiki_dir):
+        with pytest.raises(FileNotFoundError):
+            update_final_pass_status(wiki_dir, "ok")
+
+
+class TestCreateCheckpointTierValidation:
+    def test_rejects_unknown_tier(self, wiki_dir):
+        papers = [("p1", "/x")]
+        with pytest.raises(ValueError, match="Unknown tier"):
+            create_checkpoint(wiki_dir, papers, wave_size=1, tier="experimental")

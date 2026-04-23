@@ -11,6 +11,7 @@ import yaml
 CHECKPOINT_FILENAME = ".compile-checkpoint.yml"
 STALE_THRESHOLD = timedelta(hours=24)
 VALID_FINAL_PASS_STATUSES = frozenset({"pending", "in-progress", "ok", "failed", "skipped"})
+VALID_TIERS = frozenset({"paper-only", "full"})
 
 
 def _checkpoint_path(wiki_root) -> Path:
@@ -33,6 +34,10 @@ def create_checkpoint(
                          None is coerced to []. Used by subagents for cites matching.
     final-pass-status:   'pending' when tier='full', else 'skipped'.
     """
+    if tier not in VALID_TIERS:
+        raise ValueError(
+            f"Unknown tier: {tier!r} (expected one of {sorted(VALID_TIERS)})"
+        )
     final_pass_status = "pending" if tier == "full" else "skipped"
     cp: dict[str, Any] = {
         "run-id": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -143,5 +148,10 @@ def update_final_pass_status(wiki_root, status: str) -> None:
     cp = read_checkpoint(wiki_root)
     if cp is None:
         raise FileNotFoundError("No checkpoint found")
+    if cp.get("tier") != "full":
+        raise ValueError(
+            f"update_final_pass_status is only valid for tier='full' checkpoints "
+            f"(this checkpoint has tier={cp.get('tier')!r})"
+        )
     cp["final-pass-status"] = status
     write_checkpoint(wiki_root, cp)
