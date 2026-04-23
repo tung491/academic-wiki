@@ -62,7 +62,15 @@ After all subagent waves (including the one retry wave) complete, the orchestrat
 2. **Intra-batch backlinks** — for each entity page created during this batch, scan the batch's paper pages for mentions of slug-words, insert `[[<slug>]]` where the ≥2-word / proper-noun rule fires.
 3. Cross-paper intra-batch is skipped — accepts that sibling papers in the same batch may miss semantic-equivalence flags; lint surfaces the gap if needed.
 
-**State machine for `final-pass-status`:** `pending` (initial, set when checkpoint is created) → `in-progress` (set by orchestrator when starting substeps) → `ok` (all three substeps completed successfully) OR `failed` (any substep raised). On `failed`, resume re-runs the entire final pass; the substep ops are idempotent (cites append dedups by paper-id, backlink insert is a no-op if `[[<slug>]]` is already at the target line), so a partial mid-pass failure leaves the wiki in a valid intermediate state that the re-run completes correctly.
+**State machine for `final-pass-status`:**
+
+- `skipped` — terminal state set at checkpoint creation when `tier='paper-only'`. The final pass is a no-op for paper-only batches.
+- `pending` — initial state when `tier='full'`. Set when the checkpoint is created.
+- `in-progress` — set by orchestrator when starting substeps.
+- `ok` — all three substeps (intra-batch cites, intra-batch backlinks, cross-paper skip-note) completed successfully.
+- `failed` — any substep raised. On resume the orchestrator treats `failed` the same as `pending` and re-runs the whole pass. Substep ops are idempotent (cites append dedups by paper-id, backlink insert is a no-op if `[[<slug>]]` is already at the target line), so a partial mid-pass failure leaves the wiki in a valid intermediate state that the re-run completes correctly.
+
+A value of `skipped` must NOT be treated as `failed` or `pending` on resume — it indicates the tier does not need a final pass.
 
 Commit: `compile: final pass (intra-batch cites + backlinks)`. Then squash and finalize as today.
 
@@ -81,8 +89,18 @@ Uses POSIX `fcntl.flock` — advisory file locking with automatic release on pro
 def acquire(wiki_root, kind: str, key: str, timeout_seconds: float = 60.0):
     """Acquire exclusive fcntl.flock on <wiki_root>/.locks/<kind>/<key>.lock.
 
-    kind: 'paper' | 'concept' | 'method' | 'open-problem' | 'venue' | 'reports'
-    Raises TimeoutError past deadline.
+    kind: one of 'paper' | 'concept' | 'method' | 'open-problem' | 'venue' | 'reports'
+    Raises TimeoutError past deadline; raises ValueError if kind is unrecognized.
+
+    Timeout is implemented as a non-blocking retry loop:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline: raise TimeoutError
+                time.sleep(0.1)
+    (fcntl.flock in blocking mode supports no timeout, so we poll.)
 
     Lock auto-releases when the holding process exits (crash or clean), so
     "stale lock" is only possible if a process is alive but wedged. If that
@@ -92,6 +110,8 @@ def acquire(wiki_root, kind: str, key: str, timeout_seconds: float = 60.0):
 ```
 
 Lock files live in `<wiki_root>/.locks/<kind>/<key>.lock`. The `.locks/` directory is added to the wiki's `.gitignore`.
+
+**Relationship to existing `lockfile.py`:** `entity_lock.py` is a separate module with a separate primitive (`fcntl.flock`) and separate file-path namespace (`.locks/<kind>/`). The existing `lockfile.py` — which protects against concurrent `ingest`/`compile`/`lint` at the wiki level using `O_CREAT|O_EXCL` on `<wiki_root>/.lock` — is unchanged and still acquired at batch start for the entire run. The two modules don't interact: the wiki-level lock is held by the orchestrator process for the full batch; the per-entity locks are held briefly by subagents inside that window. Because subagents are spawned as separate processes (not `fork()`s of the orchestrator), `fcntl.flock`'s per-process semantics do not apply adversely.
 
 ### 3.2 High-level helpers
 
@@ -122,16 +142,18 @@ def resolve_cites(wiki_root, references_raw, pre_batch_paper_ids):
     the subagent LLM to review.
 
     Algorithm:
-      1. For each pre_batch_paper_id, read its page frontmatter to get
+      1. For each pre_batch_paper_id, read its page frontmatter via
+         academic_wiki_lib.frontmatter.read_frontmatter to get
          (title, first_author_surname, year). Cache across a batch for speed.
       2. For each reference_string in references_raw, normalize (lower,
          strip punctuation).
-      3. Score each candidate via token-set-ratio on
-         "<title> <first_author_surname> <year>" against the normalized
-         reference. (Use difflib.SequenceMatcher or rapidfuzz if available —
-         spec-level we want behavior, not library choice.)
-      4. Keep candidates with score >= 0.80. Among them, return top 5 per
-         reference sorted by score desc.
+      3. Score each candidate via token-set ratio against the candidate string
+         "<title> <first_author_surname> <year>". All scores are normalized
+         to the 0.0-1.0 range before comparison (rapidfuzz returns 0-100 by
+         default — divide by 100; difflib.SequenceMatcher.ratio() is already
+         0.0-1.0). Prefer rapidfuzz if installed; fall back to difflib.
+      4. Keep candidates with normalized score >= 0.80. Among them, return
+         up to 5 per reference sorted by score desc.
 
     No lock needed — caller (subagent) owns the paper page being updated.
     """
@@ -178,7 +200,17 @@ def insert_backlink(wiki_root, target_path: str, slug: str) -> bool:
 def compute_top_k_neighbors(wiki_root, paper_id, pre_batch_paper_ids, k=20):
     """Rank pre-batch papers by shared field/* and method/* tag count.
 
-    Returns paper-ids sorted: (shared_count desc, year desc, paper_id asc).
+    Implementation:
+      1. Read <wiki_root>/wiki/papers/<paper_id>.md frontmatter via
+         academic_wiki_lib.frontmatter.read_frontmatter.
+      2. For each pid in pre_batch_paper_ids, read its frontmatter from
+         <wiki_root>/wiki/papers/<pid>.md. Missing files are skipped (the
+         user may have deleted pages; that's handled in resume-validation
+         elsewhere).
+      3. Extract field/* and method/* tags from each; compute overlap.
+      4. Sort (shared_count desc, year desc, paper_id asc). Return top k.
+
+    Returns: list of paper-ids (strings), at most k entries.
     """
 
 def append_candidates(wiki_root, entries):
@@ -306,22 +338,29 @@ final-pass-status: pending   # pending | in-progress | ok | failed | skipped
 
 **`checkpoint.py` API change:**
 
+Existing signature (keep the positional-or-keyword `squash_base=""` default to avoid breaking existing callers):
+
 ```python
-def create_checkpoint(wiki_root, papers, wave_size, squash_base,
-                      tier="paper-only",
-                      pre_batch_paper_ids=None) -> dict:
-    """Add tier, pre_batch_paper_ids, final-pass-status to the checkpoint dict.
+def create_checkpoint(
+    wiki_root,
+    papers: list[tuple[str, str]],
+    wave_size: int,
+    squash_base: str = "",
+    tier: str = "paper-only",               # NEW
+    pre_batch_paper_ids: list[str] | None = None,  # NEW
+) -> dict[str, Any]:
+    """Write a new checkpoint to disk and return the dict.
 
-    Defaults (tier='paper-only', pre_batch_paper_ids=None, final-pass-status='skipped')
-    preserve the existing paper-only behavior — callers that don't opt into full-tier
-    get the same output as before.
-
-    For full-tier callers: pass tier='full' and the pre-batch paper-id list.
-    final-pass-status starts at 'pending' when tier='full', else 'skipped'.
+    Concretely writes these new keys into the dict body:
+      tier:                tier value (literal 'paper-only' or 'full')
+      pre-batch-paper-ids: pre_batch_paper_ids if not None else []
+                           (None is coerced to [] before writing; the YAML
+                           always contains an explicit list, never null)
+      final-pass-status:   'pending' if tier == 'full' else 'skipped'
     """
 ```
 
-Migration for existing checkpoints from rev-1 paper-only batch: `create_checkpoint` writes the new fields; `read_checkpoint` defaults missing fields (`tier` → `"paper-only"`, `final-pass-status` → `"skipped"`, `pre_batch_paper_ids` → `[]`). No migration script needed — old checkpoints resume correctly as paper-only.
+`read_checkpoint` is updated to default missing fields for back-compat with rev-1 checkpoints: `tier` → `"paper-only"`, `final-pass-status` → `"skipped"`, `pre-batch-paper-ids` → `[]`. No migration script — rev-1 checkpoints resume correctly as paper-only. A new `update_final_pass_status(wiki_root, status)` helper sets the `final-pass-status` key and writes; this is the single writer for that state transition.
 
 **Resume flow additions:**
 
