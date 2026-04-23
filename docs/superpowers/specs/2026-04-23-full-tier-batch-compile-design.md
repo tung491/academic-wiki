@@ -1,7 +1,7 @@
 # Full-Tier Batch Compile Design
 
 **Date:** 2026-04-23
-**Status:** Draft (rev 2 — review fixes)
+**Status:** Draft (rev 3 — review approved)
 **Problem:** Today's batch compile is paper-only (SKILL.md §compile: "Batch mode is paper-only tier only. `--paper-only` is implicit; Wave 2 full-tier batch is future work."). On a 1000-paper wiki, `/academic-wiki:wiki compile` produces paper pages without the enrichment that sequential compile provides (entity extraction, cites resolution, backlink audit, cross-paper candidate detection). The user must either run a second pass paper-by-paper or never get the full wiki.
 
 **Goal:** Extend batch mode so that `compile` (no flag) on >5 pending papers produces the same output as sequential full-tier compile, using wave-based parallel Sonnet subagents with per-entity-page locks, a pre-batch snapshot for deterministic cites/backlinks, and a single serial final pass for intra-batch references.
@@ -260,6 +260,11 @@ Orchestrator chooses based on whether `--paper-only` was set (or the checkpoint'
 ```
 
 `{{PRE_BATCH_PAPERS}}` stays inline (short enough: 500 paper-ids ≈ 15KB). `{{PRE_BATCH_SNAPSHOT_PATH}}` replaces the earlier `{{PRE_BATCH_TARGETS}}` inline embed, so subagents read a local file instead of unpacking a 60KB prompt variable.
+
+**Which variable drives which step:**
+
+- `{{PRE_BATCH_PAPERS}}` — consumed by Step 6 (cites resolution, fuzzy-matches references-raw against these paper-ids) and Step 8 (cross-paper top-K ranking input).
+- `{{PRE_BATCH_SNAPSHOT_PATH}}` — consumed by Step 7 (backlink target scope — subagent reads the `targets:` list from the file).
 
 ### 4.3 New steps (5-8) in the template
 
