@@ -1,6 +1,6 @@
 # Batch Compile Subagent Prompt
 
-> **Usage:** This file is a template. The orchestrator replaces `{{WIKI_ROOT}}` and `{{PAPER_LIST}}` with runtime values before dispatching each subagent.
+> **Usage:** This file is a template. The orchestrator replaces `{{WIKI_ROOT}}`, `{{PAPER_LIST}}`, and `{{TODAY}}` with runtime values before dispatching each subagent.
 
 ---
 
@@ -127,9 +127,9 @@ If no identifiers are found in the extract, set `identifiers: null`.
 
 **`source-version`:** Take from extract frontmatter `source-version`; if absent use `unknown`.
 
-**`created`:** If the paper page already exists, preserve the existing `created:` date. If writing a new page, use today's date: `2026-04-22`.
+**`created`:** If the paper page already exists, preserve the existing `created:` date. If writing a new page, use today's date: `{{TODAY}}`.
 
-**`updated`:** Always set to today's date: `2026-04-22`.
+**`updated`:** Always set to today's date: `{{TODAY}}`.
 
 **`publication-date`:** Use the full date if available; if only year is known, use `<year>-01-01`. If completely unknown, omit.
 
@@ -279,8 +279,8 @@ type: venue
 name: "<raw venue name from extract>"
 slug: <venue-slug>
 venue-type: <conference | journal | workshop | preprint-server>
-created: 2026-04-22
-updated: 2026-04-22
+created: {{TODAY}}
+updated: {{TODAY}}
 papers:
   - <paper-id>
 tags:
@@ -297,7 +297,7 @@ Read the existing venue page. Then write an updated version that:
 1. Preserves `created:`, `name:`, `venue-type:`, `slug:` exactly as they are (the user may have corrected them)
 2. Appends `<paper-id>` to `papers:` if it is not already present (dedup, preserve existing order)
 3. Unions `field/*` tags from the paper into `tags:` (dedup, preserve existing order)
-4. Updates `updated:` to `2026-04-22`
+4. Updates `updated:` to `{{TODAY}}`
 5. Updates the body count line to reflect the new total number of papers
 
 ---
