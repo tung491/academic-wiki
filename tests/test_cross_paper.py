@@ -99,3 +99,20 @@ class TestAppendCandidates:
         assert len(reports) == 1
         content = reports[0].read_text()
         assert content.count("dup") == 1
+
+    def test_dedups_hyphenated_type(self, wiki_dir):
+        # Regression: \w+ would not match hyphenated types like "open-problem"
+        entries = [{
+            "description": "hyphen",
+            "type": "open-problem",
+            "paper_a": "p1",
+            "paper_b": "p2",
+            "quote_a": "x",
+            "quote_b": "y",
+            "relationship": "equivalent",
+        }]
+        append_candidates(wiki_dir, entries)
+        append_candidates(wiki_dir, entries)
+        reports = list((wiki_dir / "outputs" / "reports").glob("*-promotion-candidates.md"))
+        content = reports[0].read_text()
+        assert content.count("hyphen") == 1
