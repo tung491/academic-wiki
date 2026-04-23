@@ -145,6 +145,11 @@ def update_final_pass_status(wiki_root, status: str) -> None:
             f"Unknown final-pass-status: {status!r} "
             f"(expected one of {sorted(VALID_FINAL_PASS_STATUSES)})"
         )
+    if status == "skipped":
+        raise ValueError(
+            "'skipped' is a create-time terminal state for paper-only checkpoints "
+            "and cannot be set via update_final_pass_status"
+        )
     cp = read_checkpoint(wiki_root)
     if cp is None:
         raise FileNotFoundError("No checkpoint found")

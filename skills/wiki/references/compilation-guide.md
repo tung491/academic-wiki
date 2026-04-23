@@ -158,8 +158,8 @@ For each wave, spawn all subagents **in a single message** (parallel tool calls)
 - **Template selection:** use `references/batch-compile-full-prompt.md` for full-tier batches; use `references/batch-compile-prompt.md` for paper-only batches.
 - For **full-tier**, the orchestrator interpolates these placeholders before dispatch:
   - `{{WIKI_ROOT}}` — absolute path to the wiki root
-  - `{{PAPER_LIST}}` — JSON-serialised list of `{paper-id, extract-path}` tuples for this subagent's batch
-  - `{{PRE_BATCH_PAPERS}}` — JSON-serialised `pre_batch_paper_ids` list from the checkpoint
+  - `{{PAPER_LIST}}` — one `<paper-id> <extract-path>` line per entry for this subagent's batch
+  - `{{PRE_BATCH_PAPERS}}` — comma-separated `pre_batch_paper_ids` list from the checkpoint (the prompt's Step 6/8 snippets parse with `.split(',')`)
   - `{{PRE_BATCH_SNAPSHOT_PATH}}` — absolute path to `outputs/.pre-batch-snapshot.yml`
   - `{{PYTHONPATH}}` — path to insert at `sys.path[0]` so subagents can import `academic_wiki_lib`
   - `{{TODAY}}` — ISO date string (e.g. `2026-04-23`)
@@ -172,8 +172,9 @@ Wait for all subagents in the wave to complete before proceeding (Claude Code no
 After all subagents in a wave finish:
 
 1. Parse each subagent's return text for `ok:` and `failed:` lines.
-2. Call `update_paper_statuses()` with the aggregated results.
-3. Stage and commit the wave:
+2. For full-tier waves, also parse the four auxiliary counter lines (`entities: N created, M merged`, `cites: K resolved`, `backlinks: L inserted`, `cross-paper: X candidates`) from each subagent's RESULTS block. Accumulate sums in memory — these drive the per-wave console line (e.g. `Wave 3/10 complete: 98 ok, 2 failed. +218 entities, +512 cites, +104 backlinks, +41 cross-paper candidates.`) and feed the roll-up described in "Finalize (full-tier)".
+3. Call `update_paper_statuses()` with the aggregated ok/failed results.
+4. Stage and commit the wave:
    ```bash
    git -C "$WIKI_ROOT" add wiki/papers/ wiki/venues/ wiki/concepts/ wiki/methods/ wiki/open-problems/ outputs/.compile-checkpoint.yml outputs/reports/
    git -C "$WIKI_ROOT" commit -m "compile: wave N/M (X papers, Y ok, Z failed)"

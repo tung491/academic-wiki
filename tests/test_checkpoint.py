@@ -190,6 +190,13 @@ class TestUpdateFinalPassStatus:
         with pytest.raises(FileNotFoundError):
             update_final_pass_status(wiki_dir, "ok")
 
+    def test_rejects_skipped_status(self, wiki_dir):
+        # 'skipped' is a create-time terminal state for paper-only; never settable via update
+        papers = [("p1", "/x")]
+        create_checkpoint(wiki_dir, papers, wave_size=1, tier="full")
+        with pytest.raises(ValueError, match="skipped"):
+            update_final_pass_status(wiki_dir, "skipped")
+
 
 class TestCreateCheckpointTierValidation:
     def test_rejects_unknown_tier(self, wiki_dir):
