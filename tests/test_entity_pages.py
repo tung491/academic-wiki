@@ -35,13 +35,13 @@ class TestUpsertEntityCreate:
         assert "field/nlp" in fm["tags"]
 
     def test_status_default_open_for_open_problem(self, wiki_dir):
+        # No status_default argument — exercises the _DEFAULT_STATUS mapping
         created = upsert_entity(
             wiki_dir, slug="ai-safety", kind="open-problem",
             paper_id="smith2024safety",
             title="AI Safety",
             tags=["field/ai-safety"],
             body_contribution="An unresolved alignment question.",
-            status_default="open",
         )
         assert created is True
         fm, _ = read_frontmatter(wiki_dir / "wiki" / "open-problems" / "ai-safety.md")

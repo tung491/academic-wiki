@@ -41,19 +41,19 @@ def _render_new(slug: str, kind: str, title: str, paper_id: str,
 def _merge_existing(existing_fm: dict[str, Any], existing_body: str,
                     paper_id: str, tags: list[str],
                     body_contribution: str, today: str) -> tuple[dict[str, Any], str]:
-    sources = list(existing_fm.get("sources") or [])
+    fm = dict(existing_fm)
+    sources = list(fm.get("sources") or [])
     if paper_id not in sources:
         sources.append(paper_id)
-    existing_tags = list(existing_fm.get("tags") or [])
+    merged_tags = list(fm.get("tags") or [])
     for t in tags:
-        if t not in existing_tags:
-            existing_tags.append(t)
-    existing_fm["sources"] = sources
-    existing_fm["tags"] = existing_tags
-    existing_fm["updated"] = today
-    # Append attributed paragraph to body
+        if t not in merged_tags:
+            merged_tags.append(t)
+    fm["sources"] = sources
+    fm["tags"] = merged_tags
+    fm["updated"] = today
     attribution = f"\n\nFrom [[{paper_id}]]: {body_contribution}\n"
-    return existing_fm, existing_body.rstrip() + attribution
+    return fm, existing_body.rstrip() + attribution
 
 
 def upsert_entity(
