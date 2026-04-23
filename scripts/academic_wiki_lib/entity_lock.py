@@ -42,7 +42,7 @@ def acquire(wiki_root, kind: str, key: str, timeout_seconds: float = 60.0):
                 if time.monotonic() >= deadline:
                     raise TimeoutError(
                         f"Could not acquire entity lock {kind}/{key} within {timeout_seconds}s"
-                    )
+                    ) from None
                 time.sleep(POLL_INTERVAL_S)
         try:
             yield

@@ -68,6 +68,7 @@ class TestAcquireCrossProcess:
             assert time.monotonic() - t0 < 2.0
         finally:
             holder.join(timeout=5)
+            assert holder.exitcode == 0, "subprocess holder crashed"
 
     def test_acquires_after_other_process_releases(self, wiki_dir):
         ready = multiprocessing.Event()
@@ -85,3 +86,4 @@ class TestAcquireCrossProcess:
                 pass
         finally:
             holder.join(timeout=5)
+            assert holder.exitcode == 0, "subprocess holder crashed"
