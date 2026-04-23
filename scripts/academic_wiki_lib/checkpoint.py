@@ -10,6 +10,7 @@ import yaml
 
 CHECKPOINT_FILENAME = ".compile-checkpoint.yml"
 STALE_THRESHOLD = timedelta(hours=24)
+VALID_FINAL_PASS_STATUSES = frozenset({"pending", "in-progress", "ok", "failed", "skipped"})
 
 
 def _checkpoint_path(wiki_root) -> Path:
@@ -21,8 +22,18 @@ def create_checkpoint(
     papers: list[tuple[str, str]],
     wave_size: int,
     squash_base: str = "",
+    tier: str = "paper-only",
+    pre_batch_paper_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a new checkpoint file. Returns the checkpoint dict."""
+    """Create a new checkpoint file. Returns the checkpoint dict.
+
+    tier: 'paper-only' (default) preserves existing behavior.
+          'full' enables the full-tier batch flow.
+    pre_batch_paper_ids: snapshot of paper-ids that existed before this batch.
+                         None is coerced to []. Used by subagents for cites matching.
+    final-pass-status:   'pending' when tier='full', else 'skipped'.
+    """
+    final_pass_status = "pending" if tier == "full" else "skipped"
     cp: dict[str, Any] = {
         "run-id": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": "in-progress",
@@ -33,18 +44,33 @@ def create_checkpoint(
         "errors": {},
         "squash-base": squash_base,
         "wave-commits": [],
+        "tier": tier,
+        "pre-batch-paper-ids": list(pre_batch_paper_ids) if pre_batch_paper_ids is not None else [],
+        "final-pass-status": final_pass_status,
     }
     write_checkpoint(wiki_root, cp)
     return cp
 
 
 def read_checkpoint(wiki_root) -> dict[str, Any] | None:
-    """Read checkpoint from disk. Returns None if no checkpoint exists."""
+    """Read checkpoint from disk. Returns None if no checkpoint exists.
+
+    For back-compat with older checkpoints, missing full-tier fields default:
+      tier → 'paper-only'
+      pre-batch-paper-ids → []
+      final-pass-status → 'skipped'
+    """
     path = _checkpoint_path(wiki_root)
     if not path.exists():
         return None
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cp = yaml.safe_load(f)
+    if cp is None:
+        return None
+    cp.setdefault("tier", "paper-only")
+    cp.setdefault("pre-batch-paper-ids", [])
+    cp.setdefault("final-pass-status", "skipped")
+    return cp
 
 
 def write_checkpoint(wiki_root, cp: dict[str, Any]) -> None:
@@ -101,3 +127,21 @@ def get_pending_papers(wiki_root) -> list[str]:
     if cp is None:
         return []
     return [pid for pid, status in cp["papers"].items() if status in ("pending", "failed")]
+
+
+def update_final_pass_status(wiki_root, status: str) -> None:
+    """Set the final-pass-status field on the checkpoint.
+
+    Raises ValueError for unknown statuses. Raises FileNotFoundError if no
+    checkpoint exists.
+    """
+    if status not in VALID_FINAL_PASS_STATUSES:
+        raise ValueError(
+            f"Unknown final-pass-status: {status!r} "
+            f"(expected one of {sorted(VALID_FINAL_PASS_STATUSES)})"
+        )
+    cp = read_checkpoint(wiki_root)
+    if cp is None:
+        raise FileNotFoundError("No checkpoint found")
+    cp["final-pass-status"] = status
+    write_checkpoint(wiki_root, cp)

@@ -112,3 +112,71 @@ class TestGetPendingPapers:
 
     def test_returns_empty_when_no_checkpoint(self, wiki_dir):
         assert get_pending_papers(wiki_dir) == []
+
+
+class TestFullTierFields:
+    def test_default_tier_is_paper_only(self, wiki_dir):
+        papers = [("p1", "/x")]
+        cp = create_checkpoint(wiki_dir, papers, wave_size=1)
+        assert cp["tier"] == "paper-only"
+        assert cp["pre-batch-paper-ids"] == []
+        assert cp["final-pass-status"] == "skipped"
+
+    def test_tier_full_sets_final_pass_pending(self, wiki_dir):
+        papers = [("p1", "/x")]
+        cp = create_checkpoint(
+            wiki_dir, papers, wave_size=1,
+            tier="full",
+            pre_batch_paper_ids=["oldpaper1", "oldpaper2"],
+        )
+        assert cp["tier"] == "full"
+        assert cp["pre-batch-paper-ids"] == ["oldpaper1", "oldpaper2"]
+        assert cp["final-pass-status"] == "pending"
+
+    def test_none_pre_batch_coerced_to_empty_list(self, wiki_dir):
+        papers = [("p1", "/x")]
+        cp = create_checkpoint(wiki_dir, papers, wave_size=1, tier="full",
+                               pre_batch_paper_ids=None)
+        assert cp["pre-batch-paper-ids"] == []
+
+
+class TestReadCheckpointBackCompat:
+    def test_missing_fields_default_on_read(self, wiki_dir):
+        # Write an old-style checkpoint without the new fields
+        cp_old = {
+            "run-id": "2026-04-01T00:00:00Z",
+            "status": "in-progress",
+            "total": 1,
+            "wave-size": 1,
+            "last-completed-wave": -1,
+            "papers": {"p1": "pending"},
+            "errors": {},
+            "squash-base": "",
+            "wave-commits": [],
+        }
+        write_checkpoint(wiki_dir, cp_old)
+        cp = read_checkpoint(wiki_dir)
+        assert cp["tier"] == "paper-only"
+        assert cp["pre-batch-paper-ids"] == []
+        assert cp["final-pass-status"] == "skipped"
+
+
+class TestUpdateFinalPassStatus:
+    def test_sets_status(self, wiki_dir):
+        from academic_wiki_lib.checkpoint import update_final_pass_status
+        papers = [("p1", "/x")]
+        create_checkpoint(wiki_dir, papers, wave_size=1, tier="full",
+                          pre_batch_paper_ids=[])
+        update_final_pass_status(wiki_dir, "in-progress")
+        cp = read_checkpoint(wiki_dir)
+        assert cp["final-pass-status"] == "in-progress"
+        update_final_pass_status(wiki_dir, "ok")
+        cp = read_checkpoint(wiki_dir)
+        assert cp["final-pass-status"] == "ok"
+
+    def test_rejects_unknown_status(self, wiki_dir):
+        from academic_wiki_lib.checkpoint import update_final_pass_status
+        papers = [("p1", "/x")]
+        create_checkpoint(wiki_dir, papers, wave_size=1)
+        with pytest.raises(ValueError):
+            update_final_pass_status(wiki_dir, "bogus")
