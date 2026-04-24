@@ -1,9 +1,36 @@
 """Unit tests for s2_stub.py."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
+from academic_wiki_lib.frontmatter import read_frontmatter
 from academic_wiki_lib.s2_stub import _compute_slug
+
+
+def _make_wiki_root(tmp_path):
+    wiki = tmp_path / "academic"
+    (wiki / "wiki" / "papers").mkdir(parents=True)
+    (wiki / "CLAUDE.md").write_text("test\n")
+    (wiki / "raw" / "papers").mkdir(parents=True)
+    return wiki
+
+
+def _sample_paper(**overrides):
+    base = {
+        "paperId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+        "title": "Attention Is All You Need",
+        "authors": ["Ashish Vaswani", "Noam Shazeer"],
+        "year": 2017,
+        "venue": "Advances in Neural Information Processing Systems",
+        "abstract": "The dominant sequence transduction models...",
+        "doi": "10.48550/arXiv.1706.03762",
+        "arxiv": "1706.03762",
+        "citationCount": 95234,
+    }
+    base.update(overrides)
+    return base
 
 
 class TestComputeSlug:
@@ -122,3 +149,123 @@ class TestResolveDefaultWiki:
         monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(wiki))
 
         assert resolve_default_wiki(None) == str(wiki.resolve())
+
+
+class TestWriteS2Stubs:
+    def test_writes_one_dir_per_paper(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        result = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        stub = wiki / "raw" / "papers" / slug / f"{slug}.md"
+        assert stub.is_file()
+        assert result["written"] == 1
+        assert result["skipped_existing"] == 0
+        assert result["skipped_no_identifier"] == 0
+        assert result["skipped_no_wiki"] is False
+        assert result["failed"] == 0
+
+    def test_frontmatter_has_expected_fields(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        stub = wiki / "raw" / "papers" / slug / f"{slug}.md"
+        fm, body = read_frontmatter(stub)
+
+        assert fm["title"] == "Attention Is All You Need"
+        assert fm["authors"] == ["Ashish Vaswani", "Noam Shazeer"]
+        assert fm["year"] == 2017
+        assert fm["venue"] == "Advances in Neural Information Processing Systems"
+        assert fm["doi"] == "10.48550/arXiv.1706.03762"
+        assert fm["arxiv"] == "1706.03762"
+        assert fm["s2-paper-id"] == "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
+        assert fm["citation-count"] == 95234
+        assert fm["source-url"] == "https://doi.org/10.48550/arXiv.1706.03762"
+        assert fm["extractor"] == "s2-stub"
+        assert fm["extract-status"] == "pending-s2"
+        # ISO-8601 UTC: YYYY-MM-DDTHH:MM:SSZ
+        assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", fm["extracted-at"])
+        assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", fm["queried-at"])
+
+        # Frontmatter MUST NOT contain paper-id (assigned by ingest later)
+        assert "paper-id" not in fm
+
+    def test_body_contains_abstract(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        _, body = read_frontmatter(wiki / "raw" / "papers" / slug / f"{slug}.md")
+        assert "## Abstract" in body
+        assert "The dominant sequence transduction models" in body
+
+    def test_empty_abstract_writes_placeholder(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper(abstract="")], wiki_root=str(wiki))
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        _, body = read_frontmatter(wiki / "raw" / "papers" / slug / f"{slug}.md")
+        assert "## Abstract" in body
+        assert "no abstract available" in body.lower()
+
+    def test_source_url_falls_back_to_arxiv_when_no_doi(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper(doi="")], wiki_root=str(wiki))
+
+        slug = "s2-arxiv-1706.03762"
+        fm, _ = read_frontmatter(wiki / "raw" / "papers" / slug / f"{slug}.md")
+        assert fm["source-url"] == "https://arxiv.org/abs/1706.03762"
+        assert "doi" not in fm
+
+    def test_source_url_falls_back_to_s2_when_no_doi_or_arxiv(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper(doi="", arxiv="")], wiki_root=str(wiki))
+
+        # slug = s2-pid-<sha8>
+        results = list((wiki / "raw" / "papers").iterdir())
+        assert len(results) == 1
+        fm, _ = read_frontmatter(results[0] / f"{results[0].name}.md")
+        assert fm["source-url"] == (
+            "https://www.semanticscholar.org/paper/"
+            "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
+        )
+
+    def test_empty_optional_fields_are_omitted(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        # Year unknown, no venue
+        write_s2_stubs(
+            [_sample_paper(year=None, venue="")],
+            wiki_root=str(wiki),
+        )
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        fm, _ = read_frontmatter(wiki / "raw" / "papers" / slug / f"{slug}.md")
+        assert "year" not in fm
+        assert "venue" not in fm
+
+    def test_creates_raw_papers_if_missing(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = tmp_path / "academic"
+        (wiki / "wiki").mkdir(parents=True)
+        (wiki / "CLAUDE.md").write_text("test\n")
+        # NOTE: raw/papers/ NOT pre-created
+
+        result = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+        assert result["written"] == 1
+        assert (wiki / "raw" / "papers").is_dir()
