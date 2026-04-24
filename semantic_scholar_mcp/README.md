@@ -38,6 +38,7 @@ Or add manually to `~/.claude.json` under `mcpServers`:
 {
   "mcpServers": {
     "semantic-scholar": {
+      "type": "stdio",
       "command": "semantic-scholar-mcp",
       "env": {
         "SEMANTIC_SCHOLAR_API_KEY": "your-key-here-optional"
