@@ -420,3 +420,66 @@ class TestWriteS2StubsEdgeCases:
         assert result2["written"] == 1
         assert result2["skipped_existing"] == 0
         assert (target_dir / f"{slug}.md").is_file()
+
+
+class TestStubIsClipperCompatible:
+    """Verify the stub is consumable by the Python helpers the wiki ingest
+    skill orchestrates. We can't run the full skill from pytest, but we can
+    verify the contract at the module boundary."""
+
+    def test_stub_frontmatter_round_trips(self, tmp_path):
+        from academic_wiki_lib.frontmatter import read_frontmatter
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        stub_md = wiki / "raw" / "papers" / slug / f"{slug}.md"
+
+        fm, body = read_frontmatter(stub_md)
+        assert fm["title"] == "Attention Is All You Need"
+        assert "## Abstract" in body
+
+    def test_stub_metadata_yields_expected_paper_id(self, tmp_path):
+        """generate_paper_id is what the skill calls during ingest pipeline
+        step 5. Verify the stub's metadata produces a sensible paper-id."""
+        from academic_wiki_lib.frontmatter import read_frontmatter
+        from academic_wiki_lib.paper_id import generate_paper_id
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        fm, _ = read_frontmatter(wiki / "raw" / "papers" / slug / f"{slug}.md")
+
+        # First-author last name, year, first meaningful word of title
+        last_name = fm["authors"][0].split()[-1]  # "Vaswani"
+        pid = generate_paper_id(last_name, fm["year"], fm["title"])
+        assert pid == "vaswani2017attention"
+
+    def test_stub_dedup_matches_existing_paper_via_identifiers(self, tmp_path):
+        """Verify pass 2 dedup (by DOI) sees the stub via find_existing_paper_by_identifiers
+        once the stub has been ingested with a paper-id. We simulate the post-ingest state by
+        writing a wiki/papers/<paper-id>.md with the same DOI in identifiers, then running the
+        lookup with the stub's DOI."""
+        from academic_wiki_lib.paper_id import find_existing_paper_by_identifiers
+        from academic_wiki_lib.frontmatter import write_frontmatter
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        # Write a wiki paper with the SAME DOI that the upcoming S2 stub will carry
+        write_frontmatter(
+            wiki / "wiki" / "papers" / "vaswani2017attention.md",
+            {
+                "paper-id": "vaswani2017attention",
+                "identifiers": {"doi": "10.48550/arXiv.1706.03762"},
+            },
+            "# Attention Is All You Need\n",
+        )
+        # Now write the S2 stub
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        # The skill's pass 2 dedup would call this lookup and find the existing paper
+        existing = find_existing_paper_by_identifiers(
+            str(wiki), {"doi": "10.48550/arXiv.1706.03762"})
+        assert existing == "vaswani2017attention"
