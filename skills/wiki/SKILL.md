@@ -140,7 +140,7 @@ When the input is a directory (explicit path or from batch scan) containing `.md
    - `source-url` — `https://doi.org/<doi>` if DOI present; else URL from clipper frontmatter if present; else `null`
    - `extracted-at` (ISO-8601 UTC)
    - `extract-status: complete`
-   - `extractor: obsidian-clipper`
+   - `extractor` — set to `obsidian-clipper` UNLESS the existing frontmatter already has `extractor: s2-stub` (in which case preserve `s2-stub` so future audits can identify entries that were first cached by an S2 query rather than clipped by the user).
    - `ocr-used: false`
    - `extract-warnings: []`
 6. If `images/` subdirectory exists, create a **relative** symlink: `ln -sr "$WIKI_ROOT/raw/papers/<clipper-dir>/images" "$WIKI_ROOT/raw/figures/<paperid>"` (relative so it survives vault relocation).
