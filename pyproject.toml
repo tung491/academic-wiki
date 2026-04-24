@@ -20,9 +20,16 @@ mcp = [
     "selenium-stealth>=1.0.6",
     "requests>=2.31",
 ]
+s2_mcp = [
+    "fastmcp>=3.1.1",
+    "requests>=2.31",
+]
+
+[project.scripts]
+semantic-scholar-mcp = "semantic_scholar_mcp.server:main"
 
 [tool.setuptools.packages.find]
-include = ["academic_wiki_mcp*"]
+include = ["academic_wiki_mcp*", "semantic_scholar_mcp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
