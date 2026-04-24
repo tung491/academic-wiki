@@ -65,16 +65,22 @@ async def test_search_returns_results_when_no_wiki(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_returns_results_when_hook_raises(tmp_path, monkeypatch):
-    """If write_s2_stubs raises, the tool still returns its S2 results."""
+    """If write_s2_stubs raises, the tool still returns its S2 results.
+
+    Also asserts the patched writer was actually invoked, so the test would
+    fail loudly (not pass vacuously) if academic_wiki_lib weren't importable
+    and _stub_papers's outer try/except swallowed the import failure first.
+    """
     wiki = _mk_wiki(tmp_path)
     monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(wiki))
 
     with patch("requests.get", return_value=_s2_search_response()), \
          patch("academic_wiki_lib.s2_stub.write_s2_stubs",
-               side_effect=RuntimeError("bug in stub writer")):
+               side_effect=RuntimeError("bug in stub writer")) as mock_writer:
         results = await semantic_scholar_search("test query", limit=1)
 
     assert len(results) == 1
+    assert mock_writer.called  # confirm the patch actually intercepted
 
 
 @pytest.mark.asyncio
