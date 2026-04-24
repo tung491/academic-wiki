@@ -23,7 +23,8 @@ S2_RECS = "https://api.semanticscholar.org/recommendations/v1"
 
 
 def _stub_papers(papers: list[dict]) -> None:
-    """Best-effort: write S2 results to the active wiki's raw/papers/."""
+    """Best-effort: write S2 results to the active wiki's raw/papers/.
+    Never raises — hook failures must not break the tool call."""
     try:
         from academic_wiki_lib.s2_stub import write_s2_stubs, resolve_default_wiki
         write_s2_stubs(papers, wiki_root=resolve_default_wiki(os.getcwd()))

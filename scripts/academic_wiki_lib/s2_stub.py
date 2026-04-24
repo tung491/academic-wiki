@@ -157,37 +157,45 @@ def write_s2_stubs(papers: list[dict], wiki_root: str | None) -> dict:
 
     if not wiki_root:
         summary["skipped_no_wiki"] = True
-        return summary
+    else:
+        raw_papers = Path(wiki_root) / "raw" / "papers"
+        raw_papers.mkdir(parents=True, exist_ok=True)
 
-    raw_papers = Path(wiki_root) / "raw" / "papers"
-    raw_papers.mkdir(parents=True, exist_ok=True)
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for paper in papers:
+            slug = _compute_slug(paper)
+            if slug is None:
+                summary["skipped_no_identifier"] += 1
+                continue
 
-    for paper in papers:
-        slug = _compute_slug(paper)
-        if slug is None:
-            summary["skipped_no_identifier"] += 1
-            continue
+            target_dir = raw_papers / slug
+            if target_dir.exists():
+                summary["skipped_existing"] += 1
+                continue
 
-        target_dir = raw_papers / slug
-        if target_dir.exists():
-            summary["skipped_existing"] += 1
-            continue
+            try:
+                target_dir.mkdir(parents=True, exist_ok=False)
+                fm = _build_frontmatter(paper, now_iso)
+                body = _build_body(paper)
+                tmp = target_dir / f"{slug}.md.tmp"
+                final = target_dir / f"{slug}.md"
+                write_frontmatter(tmp, fm, body)
+                os.rename(tmp, final)
+                summary["written"] += 1
+            except Exception:
+                summary["failed"] += 1
+                # Roll back partial state so a future retry can succeed
+                # (otherwise the empty target_dir would short-circuit as skipped_existing).
+                _cleanup_partial(target_dir)
 
-        try:
-            target_dir.mkdir(parents=True, exist_ok=False)
-            fm = _build_frontmatter(paper, now_iso)
-            body = _build_body(paper)
-            tmp = target_dir / f"{slug}.md.tmp"
-            final = target_dir / f"{slug}.md"
-            write_frontmatter(tmp, fm, body)
-            os.rename(tmp, final)
-            summary["written"] += 1
-        except Exception:
-            summary["failed"] += 1
-            # Roll back partial state so a future retry can succeed
-            # (otherwise the empty target_dir would short-circuit as skipped_existing).
-            _cleanup_partial(target_dir)
+    if os.environ.get("S2_STUB_DEBUG"):
+        import sys
+        print(
+            f"[s2-stub] wiki={wiki_root or 'NONE'} written={summary['written']} "
+            f"skipped_existing={summary['skipped_existing']} "
+            f"skipped_no_id={summary['skipped_no_identifier']} failed={summary['failed']}",
+            file=sys.stderr,
+        )
 
     return summary

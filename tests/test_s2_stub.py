@@ -483,3 +483,41 @@ class TestStubIsClipperCompatible:
         existing = find_existing_paper_by_identifiers(
             str(wiki), {"doi": "10.48550/arXiv.1706.03762"})
         assert existing == "vaswani2017attention"
+
+
+class TestObservability:
+    def test_s2_stub_debug_writes_stderr_summary(self, tmp_path, monkeypatch, capsys):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        monkeypatch.setenv("S2_STUB_DEBUG", "1")
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        captured = capsys.readouterr()
+        assert "[s2-stub]" in captured.err
+        assert f"wiki={wiki}" in captured.err
+        assert "written=1" in captured.err
+        assert "skipped_existing=0" in captured.err
+        assert "skipped_no_id=0" in captured.err
+        assert "failed=0" in captured.err
+
+    def test_s2_stub_debug_unset_writes_nothing_to_stderr(self, tmp_path, monkeypatch, capsys):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        monkeypatch.delenv("S2_STUB_DEBUG", raising=False)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+    def test_s2_stub_debug_logs_no_wiki_case(self, monkeypatch, capsys):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        monkeypatch.setenv("S2_STUB_DEBUG", "1")
+        write_s2_stubs([_sample_paper()], wiki_root=None)
+
+        captured = capsys.readouterr()
+        assert "[s2-stub]" in captured.err
+        assert "wiki=NONE" in captured.err
+        assert "written=0" in captured.err
