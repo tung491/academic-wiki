@@ -355,7 +355,7 @@ from academic_wiki_lib.frontmatter import read_frontmatter
 
 def _make_wiki_root(tmp_path):
     wiki = tmp_path / "academic"
-    (wiki / "wiki").mkdir(parents=True)
+    (wiki / "wiki" / "papers").mkdir(parents=True)
     (wiki / "CLAUDE.md").write_text("test\n")
     (wiki / "raw" / "papers").mkdir(parents=True)
     return wiki
