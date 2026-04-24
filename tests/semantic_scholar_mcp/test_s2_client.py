@@ -17,7 +17,7 @@ def test_get_paper_by_doi_returns_normalized_paper():
         "citationCount": 99999,
         "publicationTypes": ["JournalArticle"],
     }
-    with patch("requests.get", return_value=mock_resp):
+    with patch("semantic_scholar_mcp.s2_client.requests.get", return_value=mock_resp):
         result = get_paper_by_doi("10.48550/arXiv.1706.03762")
 
     assert result is not None
@@ -34,7 +34,7 @@ def test_get_paper_by_doi_returns_normalized_paper():
 def test_get_paper_by_doi_returns_none_on_404():
     mock_resp = MagicMock()
     mock_resp.status_code = 404
-    with patch("requests.get", return_value=mock_resp):
+    with patch("semantic_scholar_mcp.s2_client.requests.get", return_value=mock_resp):
         result = get_paper_by_doi("10.0/nonexistent")
     assert result is None
 
@@ -43,8 +43,8 @@ def test_get_paper_by_doi_returns_none_after_retries_on_503():
     mock_resp = MagicMock()
     mock_resp.status_code = 503
     mock_resp.raise_for_status.return_value = None
-    # Patch time.sleep to avoid waiting for 2+4+8+16+32 seconds in the retry loop.
-    with patch("requests.get", return_value=mock_resp), \
+    # Patch time.sleep to avoid waiting for 1+2+4+8+16 = 31 seconds in the retry loop.
+    with patch("semantic_scholar_mcp.s2_client.requests.get", return_value=mock_resp), \
          patch("semantic_scholar_mcp.s2_client.time.sleep"):
         result = get_paper_by_doi("10.1/x")
     assert result is None
