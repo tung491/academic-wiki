@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+from pathlib import Path
+
+from academic_wiki_lib.wiki_paths import find_active_wiki, _has_wiki_markers
 
 _SLUG_PREFIX_DOI = "s2-doi-"
 _SLUG_PREFIX_ARXIV = "s2-arxiv-"
@@ -44,5 +48,26 @@ def _compute_slug(paper: dict) -> str | None:
     if pid:
         sha8 = hashlib.sha256(pid.encode("utf-8")).hexdigest()[:8]
         return _SLUG_PREFIX_PID + sha8
+
+    return None
+
+
+def resolve_default_wiki(start_cwd: str | None = None) -> str | None:
+    """Resolve the active wiki root.
+
+    1. If start_cwd is provided, walk up via find_active_wiki(start_cwd). If found, return it.
+    2. Read env var ACADEMIC_WIKI_DEFAULT. If set and the path has wiki markers, return it.
+    3. Return None.
+    """
+    if start_cwd is not None:
+        found = find_active_wiki(start_cwd)
+        if found is not None:
+            return found
+
+    env_path = os.environ.get("ACADEMIC_WIKI_DEFAULT", "").strip()
+    if env_path:
+        p = Path(env_path).expanduser()
+        if p.is_dir() and _has_wiki_markers(p):
+            return str(p.resolve())
 
     return None

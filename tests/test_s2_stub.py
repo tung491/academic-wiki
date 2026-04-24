@@ -56,3 +56,69 @@ class TestComputeSlug:
     def test_missing_keys_treated_as_empty(self):
         paper = {}  # truly missing
         assert _compute_slug(paper) is None
+
+
+class TestResolveDefaultWiki:
+    def _make_wiki(self, base):
+        """Helper: create a directory with CLAUDE.md + wiki/ markers."""
+        base.mkdir(parents=True, exist_ok=True)
+        (base / "CLAUDE.md").write_text("test\n")
+        (base / "wiki").mkdir()
+        return base
+
+    def test_walks_up_from_cwd_to_find_active_wiki(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        wiki = self._make_wiki(tmp_path / "vault" / "academic")
+        deeper = wiki / "wiki" / "papers"
+        deeper.mkdir(parents=True, exist_ok=True)
+        monkeypatch.delenv("ACADEMIC_WIKI_DEFAULT", raising=False)
+
+        assert resolve_default_wiki(str(deeper)) == str(wiki.resolve())
+
+    def test_falls_back_to_env_var_when_cwd_no_match(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        wiki = self._make_wiki(tmp_path / "vault" / "academic")
+        non_wiki_cwd = tmp_path / "elsewhere"
+        non_wiki_cwd.mkdir()
+        monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(wiki))
+
+        assert resolve_default_wiki(str(non_wiki_cwd)) == str(wiki.resolve())
+
+    def test_returns_none_when_neither_resolves(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        non_wiki_cwd = tmp_path / "elsewhere"
+        non_wiki_cwd.mkdir()
+        monkeypatch.delenv("ACADEMIC_WIKI_DEFAULT", raising=False)
+
+        assert resolve_default_wiki(str(non_wiki_cwd)) is None
+
+    def test_invalid_env_var_path_returns_none(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        non_wiki_cwd = tmp_path / "elsewhere"
+        non_wiki_cwd.mkdir()
+        monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(tmp_path / "does-not-exist"))
+
+        assert resolve_default_wiki(str(non_wiki_cwd)) is None
+
+    def test_env_var_path_without_wiki_markers_returns_none(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        non_wiki_cwd = tmp_path / "elsewhere"
+        non_wiki_cwd.mkdir()
+        bare_dir = tmp_path / "bare"
+        bare_dir.mkdir()
+        monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(bare_dir))
+
+        assert resolve_default_wiki(str(non_wiki_cwd)) is None
+
+    def test_none_start_cwd_uses_env_var_only(self, tmp_path, monkeypatch):
+        from academic_wiki_lib.s2_stub import resolve_default_wiki
+
+        wiki = self._make_wiki(tmp_path / "vault" / "academic")
+        monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(wiki))
+
+        assert resolve_default_wiki(None) == str(wiki.resolve())
