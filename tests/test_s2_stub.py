@@ -269,3 +269,150 @@ class TestWriteS2Stubs:
         result = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
         assert result["written"] == 1
         assert (wiki / "raw" / "papers").is_dir()
+
+
+class TestWriteS2StubsEdgeCases:
+    def test_idempotent_on_rerun(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+        result2 = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        assert result2["written"] == 0
+        assert result2["skipped_existing"] == 1
+
+    def test_no_wiki_root_returns_skipped(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        result = write_s2_stubs([_sample_paper()], wiki_root=None)
+
+        assert result["skipped_no_wiki"] is True
+        assert result["written"] == 0
+
+    def test_empty_papers_list_is_noop(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        result = write_s2_stubs([], wiki_root=str(wiki))
+
+        assert result == {
+            "wiki_root": str(wiki),
+            "written": 0,
+            "skipped_existing": 0,
+            "skipped_no_identifier": 0,
+            "skipped_no_wiki": False,
+            "failed": 0,
+        }
+
+    def test_paper_without_identifier_skipped(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        bad = {"title": "No IDs", "authors": ["A"], "year": 2024,
+               "doi": "", "arxiv": "", "paperId": ""}
+        result = write_s2_stubs([bad], wiki_root=str(wiki))
+
+        assert result["skipped_no_identifier"] == 1
+        assert result["written"] == 0
+        assert list((wiki / "raw" / "papers").iterdir()) == []
+
+    def test_mixed_batch_counts_are_correct(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        # Pre-write one stub so the second call hits skipped_existing
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        batch = [
+            _sample_paper(),  # already exists
+            _sample_paper(doi="10.1/new", arxiv=""),  # new
+            {"doi": "", "arxiv": "", "paperId": ""},  # no identifier
+        ]
+        result = write_s2_stubs(batch, wiki_root=str(wiki))
+
+        assert result["written"] == 1
+        assert result["skipped_existing"] == 1
+        assert result["skipped_no_identifier"] == 1
+        assert result["failed"] == 0
+
+    def test_atomic_write_no_tmp_file_on_success(self, tmp_path):
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        files = sorted(p.name for p in (wiki / "raw" / "papers" / slug).iterdir())
+        assert files == [f"{slug}.md"]  # no .tmp leftover
+
+    def test_per_paper_failure_isolated(self, tmp_path, monkeypatch):
+        """If one paper write raises, the next paper still succeeds."""
+        from academic_wiki_lib import s2_stub
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        original_write = s2_stub.write_frontmatter
+        call_count = {"n": 0}
+
+        def flaky(path, fm, body):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise OSError("simulated disk full")
+            return original_write(path, fm, body)
+
+        monkeypatch.setattr(s2_stub, "write_frontmatter", flaky)
+
+        batch = [
+            _sample_paper(),  # will raise
+            _sample_paper(doi="10.1/second", arxiv=""),  # will succeed
+        ]
+        result = write_s2_stubs(batch, wiki_root=str(wiki))
+
+        assert result["failed"] == 1
+        assert result["written"] == 1
+
+    def test_wiki_root_nonexistent_path_creates_papers_dir(self, tmp_path):
+        """If wiki_root is a string that doesn't exist yet, write_s2_stubs trusts
+        the input and creates raw/papers/ under it. The "treat nonexistent as
+        no-wiki" rule lives in resolve_default_wiki, not here."""
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        ghost = tmp_path / "ghost"
+        result = write_s2_stubs([_sample_paper()], wiki_root=str(ghost))
+
+        assert result["written"] == 1
+        assert (ghost / "raw" / "papers").is_dir()
+
+    def test_partial_failure_cleanup_allows_retry(self, tmp_path, monkeypatch):
+        """If write_frontmatter raises, the partial target_dir must be cleaned up
+        so a future call can retry the same paper successfully (regression test
+        for the bug fixed in commit e15393b)."""
+        from academic_wiki_lib import s2_stub
+        from academic_wiki_lib.s2_stub import write_s2_stubs
+
+        wiki = _make_wiki_root(tmp_path)
+        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        target_dir = wiki / "raw" / "papers" / slug
+
+        # First call: monkeypatch write_frontmatter to raise
+        original_write = s2_stub.write_frontmatter
+
+        def first_call_fails(path, fm, body):
+            raise OSError("simulated failure")
+
+        monkeypatch.setattr(s2_stub, "write_frontmatter", first_call_fails)
+        result1 = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        assert result1["failed"] == 1
+        assert result1["written"] == 0
+        # Cleanup must have removed the partial target_dir
+        assert not target_dir.exists()
+
+        # Second call: restore the real write_frontmatter; the same paper should succeed
+        monkeypatch.setattr(s2_stub, "write_frontmatter", original_write)
+        result2 = write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+
+        assert result2["written"] == 1
+        assert result2["skipped_existing"] == 0
+        assert (target_dir / f"{slug}.md").is_file()
