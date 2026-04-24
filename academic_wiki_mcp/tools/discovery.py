@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from academic_wiki_mcp import mcp
 from academic_wiki_mcp.identifier import detect
 from academic_wiki_mcp.s2_client import (
@@ -7,9 +9,20 @@ from academic_wiki_mcp.s2_client import (
     S2_GRAPH,
     _normalize_s2_paper,
     _s2_get,
+    get_paper_by_doi as _get_paper_by_doi,
 )
 
 S2_RECS = "https://api.semanticscholar.org/recommendations/v1"
+
+
+def _stub_papers(papers: list[dict]) -> None:
+    """Best-effort: write S2 results to the active wiki's raw/papers/.
+    Never raises — hook failures must not break the tool call."""
+    try:
+        from academic_wiki_lib.s2_stub import write_s2_stubs, resolve_default_wiki
+        write_s2_stubs(papers, wiki_root=resolve_default_wiki(os.getcwd()))
+    except Exception:
+        pass
 
 
 async def _search(query: str, venue: str | None = None, year: str | None = None, limit: int = 10) -> list[dict]:
@@ -81,7 +94,18 @@ async def semantic_scholar_search(
     limit: int = 10,
 ) -> list[dict]:
     """Search Semantic Scholar for papers by keyword query."""
-    return await _search(query, venue=venue, year=year, limit=limit)
+    results = await _search(query, venue=venue, year=year, limit=limit)
+    _stub_papers(results)
+    return results
+
+
+@mcp.tool()
+async def get_paper_by_doi(doi: str) -> dict | None:
+    """Fetch a single paper from Semantic Scholar by DOI. Returns None if not found."""
+    result = _get_paper_by_doi(doi)
+    if result is not None:
+        _stub_papers([result])
+    return result
 
 
 @mcp.tool()
@@ -102,4 +126,6 @@ async def discover_related(identifier: str, limit: int = 10) -> dict:
             combined.append(paper)
 
     combined.sort(key=lambda p: p.get("citationCount", 0), reverse=True)
-    return {"related": combined[:limit], "total_found": len(combined)}
+    related = combined[:limit]
+    _stub_papers(related)
+    return {"related": related, "total_found": len(combined)}
