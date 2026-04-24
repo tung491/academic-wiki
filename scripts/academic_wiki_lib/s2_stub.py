@@ -13,13 +13,14 @@ _ARXIV_VERSION_RE = re.compile(r"v\d+$")
 
 
 def _sanitize_doi(doi: str) -> str:
-    s = doi.strip().lower().replace("/", "_")
+    s = doi.lower().replace("/", "_")
     s = _NON_SAFE_CHAR_RE.sub("-", s)
     return s[:_DOI_BODY_MAX]
 
 
+# arXiv IDs are short by nature: new-style "2312.12345" ≈ 10 chars, old-style "cs/0301013" similarly short.
 def _normalize_arxiv(arxiv: str) -> str:
-    s = arxiv.strip().lower()
+    s = arxiv.lower()
     if s.startswith("arxiv:"):
         s = s[len("arxiv:"):]
     s = _ARXIV_VERSION_RE.sub("", s)

@@ -43,9 +43,11 @@ class TestComputeSlug:
         # sha8 = first 8 hex chars of sha256(paperId)
         assert len(slug) == 7 + 8
 
-    def test_paperid_deterministic(self):
+    def test_paperid_produces_expected_sha8(self):
+        import hashlib
         paper = {"doi": "", "arxiv": "", "paperId": "abc123"}
-        assert _compute_slug(paper) == _compute_slug(paper)
+        expected_sha8 = hashlib.sha256(b"abc123").hexdigest()[:8]
+        assert _compute_slug(paper) == f"s2-pid-{expected_sha8}"
 
     def test_no_identifier_returns_none(self):
         paper = {"doi": "", "arxiv": "", "paperId": ""}
