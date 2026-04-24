@@ -26,7 +26,7 @@ The result: the wiki accumulates a paper-by-paper "discovery cache" of every S2 
 Two MCP servers in this repository expose S2 discovery tools:
 
 - `semantic_scholar_mcp/tools/discovery.py` — standalone server, three tools: `semantic_scholar_search`, `get_paper_by_doi`, `discover_related`.
-- `academic_wiki_mcp/tools/discovery.py` — integrated server, two tools: `semantic_scholar_search`, `discover_related`. (`get_paper_by_doi` exists as a plain function but isn't registered as a tool here.)
+- `academic_wiki_mcp/tools/discovery.py` — integrated server, two tools: `semantic_scholar_search`, `discover_related`. (`get_paper_by_doi` exists as a plain function in `academic_wiki_mcp/s2_client.py` but isn't registered as a tool here.) **This spec adds a third tool** `get_paper_by_doi` to the integrated server's tool surface (decorating the existing function with `@mcp.tool()` and adding the auto-stub hook), so the change to `academic_wiki_mcp` is "register a new tool + hook all three" not "hook the two existing tools."
 
 Both servers' S2 code is near-duplicate (per the standalone-extraction spec `2026-04-24-semantic-scholar-mcp-design.md`).
 
@@ -108,7 +108,7 @@ Per-tool variants:
 - `discover_related` → hook on `combined[:limit]` (the `related` list, not the wrapper dict).
 - `get_paper_by_doi` → hook on `[result]` if non-`None`, else skip the hook entirely.
 
-For the standalone `semantic_scholar_mcp`, `academic_wiki_lib` is not on the import path. The hook adds a `sys.path.insert` shim mirroring `academic_wiki_mcp/tools/download.py:19-24`:
+For the standalone `semantic_scholar_mcp`, `academic_wiki_lib` is not on the import path. The hook adds a `sys.path.insert` shim mirroring `academic_wiki_mcp/tools/download.py:19` (the single-line `sys.path.insert` that lets that file import `academic_wiki_lib.paper_id`):
 
 ```python
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -191,11 +191,17 @@ No code changes to the ingest skill itself. Existing flow:
 3. Dedup pass 2 (identifier-level): if DOI/arXiv matches an existing wiki page, merge identifiers and exit (the stub stays in place but is marked deduped — see open issue O-1 below).
 4. Otherwise: merges in `paper-id`, `source-sha`, sets `extract-status: complete`, computes `source-sha` from the stub `.md` itself.
 
-**One change required to existing ingest code** (file: TBD during implementation, expected `scripts/academic_wiki_lib/clipper_ingest.py` or wherever the clipper handler lives):
+**One change required to the existing ingest skill.** The clipper handler is **not** a Python module — it is the `Clipper directory ingest` block in `skills/wiki/SKILL.md` (executed by the LLM running the `wiki ingest` skill). Step 5 of that block currently writes:
 
-> When merging fields back into the stub frontmatter, **do not overwrite `extractor` if it is already set to `s2-stub`**. Today's behavior overwrites with `obsidian-clipper`. The new behavior preserves `s2-stub` so future audits can identify S2-only entries. (~1-line conditional.)
+```yaml
+extractor: obsidian-clipper
+```
 
-The implementation plan will locate the exact file/line for this change.
+unconditionally. The change for this spec:
+
+> When merging fields back into the stub frontmatter, **do not overwrite `extractor` if it is already set to `s2-stub`**. Today's behavior overwrites with `obsidian-clipper`. The new behavior preserves `s2-stub` so future audits can identify S2-only entries.
+
+This is a SKILL.md edit (a one-bullet conditional rule under step 5 of the clipper handler), not a Python code change. The implementation plan will craft the exact wording to add to the skill.
 
 ### 5.5 Slug naming (deterministic, idempotent)
 
