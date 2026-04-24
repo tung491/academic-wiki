@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
+# Make academic_wiki_lib importable when this MCP runs from the parent repo.
+# When the standalone is later extracted, this path won't resolve and the
+# import inside _stub_papers will fail silently (caught by the try/except).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
 from semantic_scholar_mcp import mcp
 from semantic_scholar_mcp.identifier import detect
 from semantic_scholar_mcp.s2_client import (
@@ -11,6 +20,15 @@ from semantic_scholar_mcp.s2_client import (
 )
 
 S2_RECS = "https://api.semanticscholar.org/recommendations/v1"
+
+
+def _stub_papers(papers: list[dict]) -> None:
+    """Best-effort: write S2 results to the active wiki's raw/papers/."""
+    try:
+        from academic_wiki_lib.s2_stub import write_s2_stubs, resolve_default_wiki
+        write_s2_stubs(papers, wiki_root=resolve_default_wiki(os.getcwd()))
+    except Exception:
+        pass
 
 
 async def _search(query: str, venue: str | None = None, year: str | None = None, limit: int = 10) -> list[dict]:
@@ -85,13 +103,18 @@ async def semantic_scholar_search(
 
     year accepts single years ("2020") or ranges ("2020-2023", "2020-").
     """
-    return await _search(query, venue=venue, year=year, limit=limit)
+    results = await _search(query, venue=venue, year=year, limit=limit)
+    _stub_papers(results)
+    return results
 
 
 @mcp.tool()
 async def get_paper_by_doi(doi: str) -> dict | None:
     """Fetch a single paper from Semantic Scholar by DOI. Returns None if not found."""
-    return _get_paper_by_doi(doi)
+    result = _get_paper_by_doi(doi)
+    if result is not None:
+        _stub_papers([result])
+    return result
 
 
 @mcp.tool()
@@ -115,4 +138,6 @@ async def discover_related(identifier: str, limit: int = 10) -> dict:
             combined.append(paper)
 
     combined.sort(key=lambda p: p.get("citationCount", 0), reverse=True)
-    return {"related": combined[:limit], "total_found": len(combined)}
+    related = combined[:limit]
+    _stub_papers(related)
+    return {"related": related, "total_found": len(combined)}
