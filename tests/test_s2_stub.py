@@ -282,7 +282,7 @@ class TestWriteS2StubsEdgeCases:
         assert result2["written"] == 0
         assert result2["skipped_existing"] == 1
 
-    def test_no_wiki_root_returns_skipped(self, tmp_path):
+    def test_no_wiki_root_returns_skipped(self):
         from academic_wiki_lib.s2_stub import write_s2_stubs
 
         result = write_s2_stubs([_sample_paper()], wiki_root=None)
@@ -337,12 +337,13 @@ class TestWriteS2StubsEdgeCases:
         assert result["failed"] == 0
 
     def test_atomic_write_no_tmp_file_on_success(self, tmp_path):
-        from academic_wiki_lib.s2_stub import write_s2_stubs
+        from academic_wiki_lib.s2_stub import write_s2_stubs, _compute_slug
 
         wiki = _make_wiki_root(tmp_path)
-        write_s2_stubs([_sample_paper()], wiki_root=str(wiki))
+        paper = _sample_paper()
+        write_s2_stubs([paper], wiki_root=str(wiki))
 
-        slug = "s2-doi-10.48550_arxiv.1706.03762"
+        slug = _compute_slug(paper)
         files = sorted(p.name for p in (wiki / "raw" / "papers" / slug).iterdir())
         assert files == [f"{slug}.md"]  # no .tmp leftover
 
@@ -371,6 +372,9 @@ class TestWriteS2StubsEdgeCases:
 
         assert result["failed"] == 1
         assert result["written"] == 1
+        # The failed paper's partial directory should have been cleaned up
+        failed_slug = "s2-doi-10.48550_arxiv.1706.03762"
+        assert not (wiki / "raw" / "papers" / failed_slug).exists()
 
     def test_wiki_root_nonexistent_path_creates_papers_dir(self, tmp_path):
         """If wiki_root is a string that doesn't exist yet, write_s2_stubs trusts
