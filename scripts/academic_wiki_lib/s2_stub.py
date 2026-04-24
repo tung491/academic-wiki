@@ -76,6 +76,7 @@ def resolve_default_wiki(start_cwd: str | None = None) -> str | None:
 
 
 def _source_url(paper: dict) -> str | None:
+    """Return the canonical source URL for the paper, or None if no identifier."""
     doi = (paper.get("doi") or "").strip()
     if doi:
         return f"https://doi.org/{doi}"
@@ -106,7 +107,7 @@ def _build_frontmatter(paper: dict, now_iso: str) -> dict:
         fm["arxiv"] = paper["arxiv"]
     if (paper.get("paperId") or "").strip():
         fm["s2-paper-id"] = paper["paperId"]
-    if paper.get("citationCount") is not None:
+    if paper.get("citationCount") is not None:  # 0 is a valid count
         fm["citation-count"] = paper["citationCount"]
     src_url = _source_url(paper)
     if src_url:
@@ -123,6 +124,21 @@ def _build_body(paper: dict) -> str:
     if not abstract:
         abstract = "*(no abstract available from Semantic Scholar)*"
     return f"## Abstract\n\n{abstract}\n"
+
+
+def _cleanup_partial(target_dir: Path) -> None:
+    """Best-effort removal of a partially-created stub dir after a write failure."""
+    try:
+        if not target_dir.exists():
+            return
+        for p in target_dir.iterdir():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        target_dir.rmdir()
+    except OSError:
+        pass
 
 
 def write_s2_stubs(papers: list[dict], wiki_root: str | None) -> dict:
@@ -170,5 +186,8 @@ def write_s2_stubs(papers: list[dict], wiki_root: str | None) -> dict:
             summary["written"] += 1
         except Exception:
             summary["failed"] += 1
+            # Roll back partial state so a future retry can succeed
+            # (otherwise the empty target_dir would short-circuit as skipped_existing).
+            _cleanup_partial(target_dir)
 
     return summary
