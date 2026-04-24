@@ -10,12 +10,12 @@ No browser automation, no vault integration — just Semantic Scholar over HTTP.
 
 ## Install
 
-From the repository root:
-
 ```bash
-uv pip install -e ".[s2_mcp]"
+git clone git@github.com:tung491/semantic-scholar-mcp.git
+cd semantic-scholar-mcp
+uv pip install -e .
 # or, with plain pip:
-pip install -e ".[s2_mcp]"
+pip install -e .
 ```
 
 Verify:
