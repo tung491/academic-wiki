@@ -66,7 +66,13 @@ async def test_search_returns_results_when_no_wiki(tmp_path, monkeypatch):
 async def test_search_returns_results_when_hook_raises(tmp_path, monkeypatch):
     """If write_s2_stubs raises, the tool still returns its S2 results.
 
-    Also asserts the patched writer was actually invoked.
+    Also asserts the patched writer was actually invoked, so the test would
+    fail loudly (not pass vacuously) if academic_wiki_lib weren't importable
+    and _stub_papers's outer try/except swallowed the import failure first.
+
+    This is especially important in the standalone server: the sys.path shim
+    makes academic_wiki_lib importable here today, but won't once the
+    package is extracted to its own repo per spec §4.4 / O-4.
     """
     wiki = _mk_wiki(tmp_path)
     monkeypatch.setenv("ACADEMIC_WIKI_DEFAULT", str(wiki))
