@@ -69,9 +69,11 @@ Cost: two copies of `s2_client.py` + `identifier.py` + the discovery helpers to 
 
 Three MCP tools, all `async`, registered on the new `FastMCP("SemanticScholarServer")` instance.
 
-### `semantic_scholar_search(query, venue=None, year=None, limit=10) -> list[dict]`
+### `semantic_scholar_search(query: str, venue: str | None = None, year: str | None = None, limit: int = 10) -> list[dict]`
 
 Keyword search against `GET /graph/v1/paper/search`. Returns a list of normalized paper dicts. Empty list on non-200 or no results.
+
+Note: `year` is a **string**, not an integer — S2 accepts range syntax like `"2020-2023"` or `"2020-"` alongside single years.
 
 ### `get_paper_by_doi(doi) -> dict | None`
 
@@ -219,7 +221,7 @@ tests/semantic_scholar_mcp/
 
 - `test_discovery.py` and `test_identifier.py` are direct copies with the only delta being `academic_wiki_mcp` → `semantic_scholar_mcp` in import paths.
 - `test_s2_client.py` covers `get_paper_by_doi` — not tested in the existing suite because it wasn't a registered tool there.
-- `test_server.py` is the new MCP's integration-level smoke test: imports `semantic_scholar_mcp.server`, then verifies the FastMCP instance has exactly `{"semantic_scholar_search", "get_paper_by_doi", "discover_related"}` registered. Catches packaging / import / decorator errors that unit tests miss.
+- `test_server.py` is the new MCP's integration-level smoke test: imports `semantic_scholar_mcp.server`, then verifies the FastMCP instance has exactly `{"semantic_scholar_search", "get_paper_by_doi", "discover_related"}` registered. Catches packaging / import / decorator errors that unit tests miss. Introspection: use FastMCP's tool-listing API — in recent versions `await mcp.get_tools()` returns a dict keyed by tool name; the plan should confirm the exact call at implementation time.
 - `tool.pytest.ini_options.testpaths` stays `["tests"]`, so the new directory is auto-discovered.
 
 ## Error handling
