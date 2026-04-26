@@ -89,130 +89,40 @@ You should see the usage line listing all 8 operations.
 
 ## Install — `academic_wiki_mcp` server
 
-The bundled MCP exposes paper-fetching and discovery tools that any MCP-aware client can call:
+The bundled MCP exposes paper-fetching, BibTeX, and Semantic Scholar discovery tools to any MCP-aware client (Claude Code, Claude Desktop, Gemini CLI, Antigravity, Cursor, …):
 
 | Tool | Purpose |
 |---|---|
-| `download_paper(identifier, wiki_path)` | Resolve arXiv ID / DOI / URL → save the source under `wiki_path/raw/papers/` |
-| `doi_to_bibtex(doi, paper_id)` | Fetch a BibTeX entry for a DOI (doi.org content negotiation; S2 fallback) |
-| `semantic_scholar_search(query, venue?, year?, limit?)` | Keyword search Semantic Scholar |
-| `get_paper_by_doi(doi)` | Single-paper lookup on S2 |
-| `discover_related(identifier, limit?)` | Union of references + citations + recommendations for a DOI / arXiv ID / S2 ID |
+| `download_paper(identifier, wiki_path)` | Resolve arXiv ID / DOI / URL → fetch the publisher page → save metadata, sections, and figures under `<wiki_path>/raw/papers/<paper-id>/`. Identifier-level dedup against existing papers. |
+| `doi_to_bibtex(doi, paper_id)` | Fetch a BibTeX entry for a DOI (doi.org content negotiation; S2 fallback). Entry type is driven by S2 `publicationTypes` (`article` / `inproceedings` / `book` / `incollection` / `misc`) with venue-regex fallback. |
+| `semantic_scholar_search(query, venue?, year?, limit?)` | Keyword search Semantic Scholar. **Side effect:** writes each result as a clipper-compatible stub into the active wiki's `raw/papers/` for later ingest. |
+| `get_paper_by_doi(doi)` | Single-paper lookup on S2. |
+| `discover_related(identifier, limit?)` | Union of references + citations + recommendations for a DOI / arXiv ID / S2 ID, deduped by paper ID and sorted by citation count. |
 
-### One-time setup
+### Quick install (Claude Code)
 
 ```bash
 cd /path/to/academic_wiki
-pip install -e ".[mcp]"
-# or, with uv:
-uv pip install -e ".[mcp]"
-```
-
-The `[mcp]` extra pulls in `fastmcp`, `requests`, and the browser-automation deps (`playwright`, `selenium`, `undetected-chromedriver`, `selenium-stealth`) used by `download_paper` for publisher pages.
-
-The server is invoked as `python -m academic_wiki_mcp.server`. Use the **absolute** path to your venv's Python in client configs so they don't depend on shell `PATH`.
-
-### Optional: API key
-
-Set `SEMANTIC_SCHOLAR_API_KEY` in the server's environment to lift Semantic Scholar's anonymous rate limits. The server still works without it.
-
-### Claude Code
-
-```bash
+pip install -e ".[mcp]"   # or: uv pip install -e ".[mcp]"
 claude mcp add academic-wiki -- /path/to/academic_wiki/.venv/bin/python -m academic_wiki_mcp.server
 ```
 
-Or edit `~/.claude.json` (or per-project `.claude/settings.json`) under `mcpServers`:
+The `[mcp]` extra pulls in `fastmcp`, `requests`, and the browser-automation stack (`playwright`, `selenium`, `undetected-chromedriver`, `selenium-stealth`) used by `download_paper` for publisher pages. Tools then appear as `mcp__academic-wiki__download_paper`, etc.
 
-```json
-{
-  "mcpServers": {
-    "academic-wiki": {
-      "type": "stdio",
-      "command": "/path/to/academic_wiki/.venv/bin/python",
-      "args": ["-m", "academic_wiki_mcp.server"],
-      "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "optional-key-here"
-      }
-    }
-  }
-}
-```
+### Claude Desktop, Gemini CLI, Antigravity, others
 
-Restart Claude Code. Tools appear as `mcp__academic-wiki__download_paper`, etc.
+Same JSON shape across all clients (`command` = absolute Python path, `args` = `["-m", "academic_wiki_mcp.server"]`, stdio transport). See [**`academic_wiki_mcp/README.md`**](academic_wiki_mcp/README.md) for the per-client config-file paths and copy-pasteable JSON snippets.
 
-### Claude Desktop
+### Environment variables
 
-Edit `claude_desktop_config.json`:
+| Variable | Default | Purpose |
+|---|---|---|
+| `WIKI_ROOT` | `~/Documents/Obsidian Vault/03-Resources` | All `wiki_path` arguments must resolve inside this tree. |
+| `SEMANTIC_SCHOLAR_API_KEY` | unset | Lifts S2 anonymous-tier rate limits. Optional. |
+| `BROWSER_TIMEOUT` | `15000` | Browser-automation timeout (ms) for `download_paper`. |
+| `S2_STUB_DEBUG` | unset | When set, the auto-stub helper logs to stderr on each `semantic_scholar_search` call. |
 
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux:** `~/.config/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "academic-wiki": {
-      "command": "/path/to/academic_wiki/.venv/bin/python",
-      "args": ["-m", "academic_wiki_mcp.server"],
-      "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "optional-key-here"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop.
-
-### Gemini CLI
-
-Edit `~/.gemini/settings.json` (or a project-level `.gemini/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "academic-wiki": {
-      "command": "/path/to/academic_wiki/.venv/bin/python",
-      "args": ["-m", "academic_wiki_mcp.server"],
-      "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "optional-key-here"
-      }
-    }
-  }
-}
-```
-
-Restart the Gemini CLI session. The MCP schema is the same as Claude's; check `gemini mcp list` to confirm the server is registered.
-
-### Antigravity (Google IDE)
-
-Antigravity reads MCP servers from its settings UI (Settings → MCP Servers → Add) or its config file. Use the same JSON shape as above:
-
-```json
-{
-  "mcpServers": {
-    "academic-wiki": {
-      "command": "/path/to/academic_wiki/.venv/bin/python",
-      "args": ["-m", "academic_wiki_mcp.server"],
-      "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "optional-key-here"
-      }
-    }
-  }
-}
-```
-
-Reload the Antigravity window after saving. If your installation supports project-scoped servers, dropping the same JSON in the project's MCP config file works the same way.
-
-### Other MCP-aware clients (Cursor, Cody, Continue, …)
-
-Most clients accept the same `mcpServers` JSON. The recipe is always:
-
-- `command`: absolute path to the Python interpreter
-- `args`: `["-m", "academic_wiki_mcp.server"]`
-- `env` (optional): `SEMANTIC_SCHOLAR_API_KEY`
-- `transport`: stdio (default)
+Full reference, supported publishers, return shapes, and troubleshooting: [**`academic_wiki_mcp/README.md`**](academic_wiki_mcp/README.md).
 
 ---
 
