@@ -42,7 +42,7 @@ Eight operations, invoked from a Claude Code session:
 
 ### Directory layout
 
-Every wiki lives at `~/ObsidianVault/03-Resources/<name>/`:
+Every wiki lives at `~/Documents/"Obsidian Vault"/03-Resources/<name>/`:
 
 ```
 <name>/
@@ -113,7 +113,7 @@ When a recompiled or updated paper contributes overlapping information to an exi
 ### Prerequisites
 
 - Python 3.10+, git with `user.name` and `user.email` configured
-- Obsidian vault at `~/ObsidianVault/` with a `03-Resources/` directory
+- Obsidian vault at `~/Documents/Obsidian Vault/` with a `03-Resources/` directory
 - Node.js 18+ (optional, for qmd auto-install)
 - `ocr-papers-to-latex` skill (for local PDF ingestion)
 - `agentic-rag-v2` MCP (for arXiv/DOI/publisher download)
@@ -124,7 +124,7 @@ Verify before installing:
 python3 --version          # 3.10+
 git --version              # 2.x
 git config user.name       # your name
-ls ~/ObsidianVault/03-Resources/
+ls ~/Documents/"Obsidian Vault"/03-Resources/
 ```
 
 ### Install
@@ -165,7 +165,7 @@ Work through these steps in order. Each builds on the previous.
 
 **What happens:**
 
-1. Creates `~/ObsidianVault/03-Resources/academic/` with the 16-subdirectory tree.
+1. Creates `~/Documents/"Obsidian Vault"/03-Resources/academic/` with the 16-subdirectory tree.
 2. Writes `CLAUDE.md` with the full schema (entity templates, naming conventions, log format).
 3. Writes `wiki/index.md`, `log.md`, `.gitignore`, `qmd.yml`.
 4. Initializes the wiki's own git repo and makes initial commit: `init: academic wiki`.
@@ -176,8 +176,8 @@ Work through these steps in order. Each builds on the previous.
 **Verify:**
 
 ```bash
-ls ~/ObsidianVault/03-Resources/academic/
-git -C ~/ObsidianVault/03-Resources/academic log --oneline -1
+ls ~/Documents/"Obsidian Vault"/03-Resources/academic/
+git -C ~/Documents/"Obsidian Vault"/03-Resources/academic log --oneline -1
 ```
 
 Expected:
@@ -200,8 +200,8 @@ Downloads via `agentic-rag-v2`, extracts via `ocr-papers-to-latex`, runs both de
 **Verify:**
 
 ```bash
-ls ~/ObsidianVault/03-Resources/academic/raw/extracts/
-git -C ~/ObsidianVault/03-Resources/academic log --oneline -1
+ls ~/Documents/"Obsidian Vault"/03-Resources/academic/raw/extracts/
+git -C ~/Documents/"Obsidian Vault"/03-Resources/academic log --oneline -1
 # ingest: vaswani-2017-attention
 ```
 
@@ -255,7 +255,7 @@ Identifier match (`arxiv: "1706.03762"`, version-stripped) → version handler: 
 Drop a notes file before compiling — it gets folded into `## User Notes` on the paper page:
 
 ```bash
-cat > ~/ObsidianVault/03-Resources/academic/raw/notes/vaswani-2017-attention.md << 'EOF'
+cat > ~/Documents/"Obsidian Vault"/03-Resources/academic/raw/notes/vaswani-2017-attention.md << 'EOF'
 # My notes on Attention Is All You Need
 
 Key insight: multi-head attention attends to different subspaces simultaneously.
@@ -279,8 +279,8 @@ All uncompiled extracts → paper pages in `wiki/papers/`. Each page has full fr
 **Verify:**
 
 ```bash
-ls ~/ObsidianVault/03-Resources/academic/wiki/papers/
-git -C ~/ObsidianVault/03-Resources/academic log --oneline -1
+ls ~/Documents/"Obsidian Vault"/03-Resources/academic/wiki/papers/
+git -C ~/Documents/"Obsidian Vault"/03-Resources/academic log --oneline -1
 # compile: 1 paper pages
 ```
 
@@ -299,8 +299,8 @@ Additional steps beyond Wave 1: extracts entity pages (`wiki/concepts/`, `wiki/m
 **Verify:**
 
 ```bash
-ls ~/ObsidianVault/03-Resources/academic/wiki/concepts/
-ls ~/ObsidianVault/03-Resources/academic/outputs/reports/
+ls ~/Documents/"Obsidian Vault"/03-Resources/academic/wiki/concepts/
+ls ~/Documents/"Obsidian Vault"/03-Resources/academic/outputs/reports/
 ```
 
 ---
@@ -320,8 +320,8 @@ Phase 1 search reads `wiki/index.md` for candidate pages (Phase 2 uses qmd for l
 **Verify:**
 
 ```bash
-cat ~/ObsidianVault/03-Resources/academic/wiki/queries/what-is-self-attention.md
-git -C ~/ObsidianVault/03-Resources/academic log --oneline -1
+cat ~/Documents/"Obsidian Vault"/03-Resources/academic/wiki/queries/what-is-self-attention.md
+git -C ~/Documents/"Obsidian Vault"/03-Resources/academic log --oneline -1
 # query: what-is-self-attention
 ```
 
@@ -419,11 +419,11 @@ Requires a clean working tree. Appends a log entry, commits, then creates annota
 
 ```
 Tagged snapshot/icc-2026-submission at a1b2c3d.
-Revisit with: git -C ~/ObsidianVault/03-Resources/academic checkout snapshot/icc-2026-submission
-List all snapshots: git -C ~/ObsidianVault/03-Resources/academic tag --list 'snapshot/*'
+Revisit with: git -C ~/Documents/"Obsidian Vault"/03-Resources/academic checkout snapshot/icc-2026-submission
+List all snapshots: git -C ~/Documents/"Obsidian Vault"/03-Resources/academic tag --list 'snapshot/*'
 ```
 
-To return from detached HEAD: `git -C ~/ObsidianVault/03-Resources/academic checkout main`.
+To return from detached HEAD: `git -C ~/Documents/"Obsidian Vault"/03-Resources/academic checkout main`.
 
 ---
 
@@ -436,7 +436,7 @@ To return from detached HEAD: `git -C ~/ObsidianVault/03-Resources/academic chec
 The plugin shows what will be deleted (commit count, tag count) and prompts:
 
 ```
-This will PERMANENTLY delete wiki 'academic' and its git history at ~/ObsidianVault/03-Resources/academic.
+This will PERMANENTLY delete wiki 'academic' and its git history at ~/Documents/"Obsidian Vault"/03-Resources/academic.
 Type the wiki name exactly to confirm (or anything else to cancel):
 ```
 
