@@ -63,18 +63,17 @@ academic_wiki/
 
 The plugin gives you the `/academic-wiki:wiki` slash command in Claude Code.
 
-From this repo:
-
 ```bash
-# inside academic_wiki/
+git clone git@github.com:tung491/academic-wiki.git
+cd academic-wiki
 claude plugin marketplace add .
 claude plugin install academic-wiki
 ```
 
-Or directly:
+Or install directly without registering the marketplace:
 
 ```bash
-claude plugin install /path/to/academic_wiki
+claude plugin install ./    # from the cloned repo
 ```
 
 Verify in a Claude Code session:
@@ -102,9 +101,10 @@ The bundled MCP exposes paper-fetching, BibTeX, and Semantic Scholar discovery t
 ### Quick install (Claude Code)
 
 ```bash
-cd /path/to/academic_wiki
+git clone git@github.com:tung491/academic-wiki.git
+cd academic-wiki
 pip install -e ".[mcp]"   # or: uv pip install -e ".[mcp]"
-claude mcp add academic-wiki -- /path/to/academic_wiki/.venv/bin/python -m academic_wiki_mcp.server
+claude mcp add academic-wiki -- "$(pwd)/.venv/bin/python" -m academic_wiki_mcp.server
 ```
 
 The `[mcp]` extra pulls in `fastmcp`, `requests`, and the browser-automation stack (`playwright`, `selenium`, `undetected-chromedriver`, `selenium-stealth`) used by `download_paper` for publisher pages. Tools then appear as `mcp__academic-wiki__download_paper`, etc.
