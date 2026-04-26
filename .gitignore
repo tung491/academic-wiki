@@ -8,3 +8,7 @@ dist/
 build/
 .DS_Store
 .worktrees/
+
+# nested clones / external projects, not part of this repo
+llm-wiki/
+academic_web_clipper/
