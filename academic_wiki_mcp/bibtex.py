@@ -111,21 +111,43 @@ _INPROC_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# S2 publicationTypes → (bibtex_entry_type, venue_field_name_or_None)
+_S2_TYPE_MAP: dict[str, tuple[str, str | None]] = {
+    "JournalArticle": ("article", "journal"),
+    "Conference": ("inproceedings", "booktitle"),
+    "Review": ("article", "journal"),
+    "Book": ("book", None),
+    "BookSection": ("incollection", "booktitle"),
+}
+
+
+def _infer_entry_type(meta: dict) -> tuple[str, str | None]:
+    """Infer BibTeX entry type from S2 publicationTypes, falling back to venue regex."""
+    for pt in meta.get("publicationTypes") or []:
+        if pt in _S2_TYPE_MAP:
+            return _S2_TYPE_MAP[pt]
+
+    venue = meta.get("venue") or ""
+    if venue and _INPROC_PATTERN.search(venue):
+        return "inproceedings", "booktitle"
+    if venue:
+        return "article", "journal"
+    return "misc", None
+
 
 def build_from_metadata(meta: dict, paper_id: str) -> tuple[str, str]:
     """Construct a BibTeX entry from a normalized S2-shaped metadata dict.
 
-    Entry-type heuristic (case-insensitive on `meta['venue']`):
-      - matches Proceedings|Conference|Symposium|Workshop|ICCV|CVPR|NeurIPS|ICML
-        → @inproceedings, field name `booktitle`
-      - non-empty venue → @article, field name `journal`
-      - empty venue → @misc, no booktitle/journal
+    Entry-type detection (in priority order):
+      1. S2 ``publicationTypes`` list — mapped via _S2_TYPE_MAP
+         (JournalArticle→article, Conference→inproceedings, Book→book, etc.)
+      2. Venue-string heuristic — regex for conference keywords → inproceedings,
+         non-empty venue → article, empty → misc
 
     Always emits: title, author (when authors list is non-empty), year, doi
     (when present). Skips empty fields silently.
 
-    Returns (bibtex_text, entry_type) — entry_type is one of
-    "article" | "inproceedings" | "misc".
+    Returns (bibtex_text, entry_type).
 
     Raises ValueError if title or year are missing.
     """
@@ -136,16 +158,8 @@ def build_from_metadata(meta: dict, paper_id: str) -> tuple[str, str]:
     if not year:
         raise ValueError("year is missing")
 
+    entry_type, venue_field = _infer_entry_type(meta)
     venue = meta.get("venue") or ""
-    if venue and _INPROC_PATTERN.search(venue):
-        entry_type = "inproceedings"
-        venue_field = "booktitle"
-    elif venue:
-        entry_type = "article"
-        venue_field = "journal"
-    else:
-        entry_type = "misc"
-        venue_field = None
 
     authors = meta.get("authors") or []
     doi = meta.get("doi") or ""
@@ -156,7 +170,7 @@ def build_from_metadata(meta: dict, paper_id: str) -> tuple[str, str]:
         author_str = " and ".join(authors)
         lines.append(f"  author = {{{author_str}}},")
     lines.append(f"  year = {{{year}}},")
-    if venue_field:
+    if venue_field and venue:
         lines.append(f"  {venue_field} = {{{venue}}},")
     if doi:
         lines.append(f"  doi = {{{doi}}},")

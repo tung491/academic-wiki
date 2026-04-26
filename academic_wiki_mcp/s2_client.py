@@ -6,7 +6,7 @@ import requests
 from academic_wiki_mcp.config import SEMANTIC_SCHOLAR_API_KEY
 
 S2_GRAPH = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "paperId,title,authors,year,venue,abstract,externalIds,citationCount"
+S2_FIELDS = "paperId,title,authors,year,venue,abstract,externalIds,citationCount,publicationTypes"
 
 
 def _headers() -> dict[str, str]:
@@ -42,6 +42,7 @@ def _normalize_s2_paper(p: dict) -> dict:
         "doi": ext.get("DOI", ""),
         "arxiv": ext.get("ArXiv", ""),
         "citationCount": p.get("citationCount", 0),
+        "publicationTypes": p.get("publicationTypes") or [],
     }
 
 

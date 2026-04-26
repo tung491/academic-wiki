@@ -209,6 +209,75 @@ def test_build_from_metadata_inproceedings_pattern_case_insensitive():
 
 
 # ---------------------------------------------------------------------------
+# bibtex.build_from_metadata — publicationTypes-based detection
+# ---------------------------------------------------------------------------
+
+
+def test_build_from_metadata_s2_journal_article_type():
+    meta = _meta(publicationTypes=["JournalArticle"], venue="Nature")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "article"
+    assert text.startswith("@article{key1,")
+    assert "journal = {Nature}" in text
+
+
+def test_build_from_metadata_s2_conference_type():
+    meta = _meta(publicationTypes=["Conference"], venue="NeurIPS")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "inproceedings"
+    assert text.startswith("@inproceedings{key1,")
+    assert "booktitle = {NeurIPS}" in text
+
+
+def test_build_from_metadata_s2_book_type():
+    meta = _meta(publicationTypes=["Book"], venue="")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "book"
+    assert text.startswith("@book{key1,")
+    assert "journal" not in text
+    assert "booktitle" not in text
+
+
+def test_build_from_metadata_s2_book_section_type():
+    meta = _meta(publicationTypes=["BookSection"], venue="Handbook of ML")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "incollection"
+    assert text.startswith("@incollection{key1,")
+    assert "booktitle = {Handbook of ML}" in text
+
+
+def test_build_from_metadata_s2_review_type():
+    meta = _meta(publicationTypes=["Review"], venue="ACM Computing Surveys")
+    text, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "article"
+    assert "journal = {ACM Computing Surveys}" in text
+
+
+def test_build_from_metadata_s2_type_takes_priority_over_venue():
+    meta = _meta(publicationTypes=["JournalArticle"], venue="Proceedings of NeurIPS")
+    _, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "article"
+
+
+def test_build_from_metadata_s2_first_known_type_wins():
+    meta = _meta(publicationTypes=["UnknownType", "Conference"], venue="")
+    _, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "inproceedings"
+
+
+def test_build_from_metadata_s2_unknown_types_fall_back_to_venue():
+    meta = _meta(publicationTypes=["Dataset"], venue="Nature")
+    _, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "article"
+
+
+def test_build_from_metadata_empty_publication_types_fall_back_to_venue():
+    meta = _meta(publicationTypes=[], venue="Proceedings of CVPR")
+    _, entry_type = build_from_metadata(meta, "key1")
+    assert entry_type == "inproceedings"
+
+
+# ---------------------------------------------------------------------------
 # tools/bibtex.doi_to_bibtex — input validation + happy path
 # ---------------------------------------------------------------------------
 

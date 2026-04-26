@@ -77,7 +77,7 @@ async def doi_to_bibtex(doi: str, paper_id: str) -> dict:
     Returns:
       {"bibtex": "<entry text>",
        "source": "doi.org" | "semantic_scholar",
-       "entry_type": "article" | "inproceedings" | "misc"}
+       "entry_type": "article" | "inproceedings" | "book" | "incollection" | "misc"}
       or {"error": "...", "doi": doi} on total failure.
     """
     if not paper_id:
