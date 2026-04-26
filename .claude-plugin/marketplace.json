@@ -1,9 +1,12 @@
 {
   "name": "academic-wiki-local",
+  "owner": {
+    "name": "tung491"
+  },
   "plugins": [
     {
       "name": "academic-wiki",
-      "source": "."
+      "source": "./"
     }
   ]
 }
