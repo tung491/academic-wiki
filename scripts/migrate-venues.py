@@ -250,8 +250,16 @@ def _run_apply(wiki_root: Path) -> int:
         print(f"Fix these pages and re-run, or remove them from the wiki. "
               f"Report at {report_path}", file=sys.stderr)
         return 6
-    # Nothing to do — report already written; no snapshot/log/commit needed.
+    # Nothing to do — but the report file has been written (and probably differs
+    # from any prior committed version because plan content varies with wiki
+    # state). Commit just the report so the tree stays clean for subsequent
+    # runs; otherwise the next --apply would trip the dirty-tree guard.
     if not plan.groups and not rewrites:
+        _git(wiki_root, "add", str(report_path))
+        diff = _git(wiki_root, "diff", "--cached", "--quiet", check=False)
+        if diff.returncode != 0:
+            _git(wiki_root, "commit", "-m",
+                 f"migrate: venue normalization no-op ({today}) — see report")
         return 0
 
     _make_snapshot(wiki_root, today)

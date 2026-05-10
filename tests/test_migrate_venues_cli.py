@@ -378,19 +378,37 @@ def test_apply_then_dry_run_reports_zero_changes(tmp_git_wiki):
     assert "## Merges" not in latest
 
 
-def test_apply_twice_is_no_op(tmp_git_wiki):
-    """Re-running --apply after success makes no changes (no new commit)."""
+def test_apply_repeats_are_no_ops(tmp_git_wiki):
+    """Re-running --apply N times after success commits at most once
+    (the no-op-report commit), then leaves the tree clean for further runs."""
     _venue(tmp_git_wiki, "2024-aina", "2024 AINA", papers=["pA"])
     _paper(tmp_git_wiki, "pA", "2024-aina")
     subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
 
-    run_migrate(tmp_git_wiki, "--apply")
-    head_after_first = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
-                                      capture_output=True, text=True).stdout.strip()
+    def _head():
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
+                              capture_output=True, text=True).stdout.strip()
 
-    r = run_migrate(tmp_git_wiki, "--apply")
-    assert r.returncode == 0, r.stderr
-    head_after_second = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
-                                       capture_output=True, text=True).stdout.strip()
-    assert head_after_second == head_after_first, "second --apply should not add commits"
+    # First --apply does the migration commit
+    run_migrate(tmp_git_wiki, "--apply")
+    head1 = _head()
+
+    # Second --apply finds nothing to migrate but commits a new no-op report
+    # (because the report content differs from the first run's report).
+    r2 = run_migrate(tmp_git_wiki, "--apply")
+    assert r2.returncode == 0, r2.stderr
+    head2 = _head()
+
+    # Third --apply must be a true no-op: the no-op report content is now
+    # stable, so nothing to stage, no new commit.
+    r3 = run_migrate(tmp_git_wiki, "--apply")
+    assert r3.returncode == 0, r3.stderr
+    head3 = _head()
+    assert head3 == head2, "third --apply should not add new commits"
+
+    # Working tree is clean.
+    porcelain = subprocess.run(["git", "status", "--porcelain"], cwd=tmp_git_wiki,
+                               capture_output=True, text=True).stdout.strip()
+    leftover = [line for line in porcelain.splitlines() if not line.endswith(".lock")]
+    assert leftover == [], f"working tree not clean after repeated applies: {leftover!r}"
