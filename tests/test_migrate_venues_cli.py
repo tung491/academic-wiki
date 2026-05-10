@@ -299,6 +299,16 @@ def test_apply_aborts_on_skipped_pages(tmp_git_wiki):
     tags = subprocess.run(["git", "tag", "-l"], cwd=tmp_git_wiki,
                           capture_output=True, text=True).stdout.split()
     assert not any(t.startswith("snapshot/pre-venue-migration-") for t in tags)
+    # The report should still be written so the user can inspect it
+    reports = list((tmp_git_wiki / "outputs" / "reports").glob("*-venue-migration.md"))
+    assert len(reports) == 1, "report should be written even on skipped-abort"
+    # Working tree should be left clean — the abort committed the report so a
+    # subsequent --apply doesn't see it as untracked.
+    porcelain = subprocess.run(["git", "status", "--porcelain"], cwd=tmp_git_wiki,
+                               capture_output=True, text=True).stdout.strip()
+    # Filter out advisory lock entries that may transiently appear.
+    leftover = [line for line in porcelain.splitlines() if not line.endswith(".lock")]
+    assert leftover == [], f"working tree not clean after abort: {leftover!r}"
 
 
 def test_apply_creates_snapshot_tag(tmp_git_wiki):

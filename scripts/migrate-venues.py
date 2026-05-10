@@ -192,8 +192,10 @@ def _git(cwd: Path, *args: str, check: bool = True, capture: bool = True) -> sub
 def _is_dirty(wiki_root: Path) -> bool:
     out = _git(wiki_root, "status", "--porcelain", check=False).stdout
     # Exclude the advisory lock file — it is transiently created by the script
-    # itself and should not trigger the dirty-tree guard.
-    lines = [l for l in out.splitlines() if not l.endswith(".lock")]
+    # itself and should not trigger the dirty-tree guard. Production wikis put
+    # `.lock` in `.gitignore` (see templates.GITIGNORE), but the test fixture
+    # doesn't, so this filter keeps both cases honest.
+    lines = [line for line in out.splitlines() if not line.endswith(".lock")]
     return bool(lines)
 
 
@@ -228,13 +230,22 @@ def _run_apply(wiki_root: Path) -> int:
 
     today = _today()
     plan, rewrites, report = _build_report(wiki_root, today)
-    _write_report(wiki_root, today, report)
+    report_path = _write_report(wiki_root, today, report)
     if plan.skipped:
+        # Commit just the report so the tree is left clean; otherwise the next
+        # --apply run would see this untracked report file as dirty and abort
+        # with a confusing error.
+        _git(wiki_root, "add", str(report_path))
+        diff = _git(wiki_root, "diff", "--cached", "--quiet", check=False)
+        if diff.returncode != 0:
+            _git(wiki_root, "commit", "-m",
+                 f"migrate: venue normalization aborted ({today}) — see report")
         print("ERROR: refusing to apply — some venue pages could not be normalized:",
               file=sys.stderr)
         for s in plan.skipped:
             print(f"  - {s}", file=sys.stderr)
-        print("Fix these pages and re-run, or remove them from the wiki.", file=sys.stderr)
+        print(f"Fix these pages and re-run, or remove them from the wiki. "
+              f"Report at {report_path}", file=sys.stderr)
         return 6
     _make_snapshot(wiki_root, today)
 
