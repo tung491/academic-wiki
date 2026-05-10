@@ -116,8 +116,6 @@ def test_acquire_is_atomic_on_exclusive_create(tmp_path):
     assert str(os.getpid()) in str(exc_info.value)
 
 
-import os
-
 from academic_wiki_lib.lockfile import _is_alive
 
 
