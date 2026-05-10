@@ -7,6 +7,7 @@ so wiki orchestration runs identically on bash, zsh, PowerShell, and cmd via
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -34,6 +35,20 @@ def _cmd_source_sha(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_find_paper(args: argparse.Namespace) -> int:
+    from academic_wiki_lib.paper_id import find_existing_paper_by_identifiers
+    identifiers = {}
+    if args.doi:
+        identifiers["doi"] = args.doi
+    if args.arxiv:
+        identifiers["arxiv"] = args.arxiv
+    if args.url:
+        identifiers["url"] = args.url
+    pid = find_existing_paper_by_identifiers(args.wiki_root, identifiers)
+    print(json.dumps({"paper_id": pid}))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="academic_wiki_lib.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -50,6 +65,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("source-sha", help="Print SHA-256 of a file")
     p.add_argument("path")
     p.set_defaults(func=_cmd_source_sha)
+
+    p = sub.add_parser("find-paper", help="Find an existing paper-id by identifier")
+    p.add_argument("wiki_root")
+    p.add_argument("--doi", default=None)
+    p.add_argument("--arxiv", default=None)
+    p.add_argument("--url", default=None)
+    p.set_defaults(func=_cmd_find_paper)
 
     return parser
 

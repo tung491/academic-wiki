@@ -66,3 +66,43 @@ class TestSourceSha:
     def test_source_sha_missing_file_exits_nonzero(self, tmp_path):
         result = _run_cli("source-sha", str(tmp_path / "does-not-exist"))
         assert result.returncode != 0
+
+
+import json
+
+
+class TestFindPaper:
+    def _setup_wiki_with_paper(self, tmp_path: Path, paper_id: str, identifiers: dict) -> None:
+        papers_dir = tmp_path / "wiki" / "papers"
+        papers_dir.mkdir(parents=True)
+        # Minimal frontmatter + body
+        ident_yaml = "\n".join(f"  {k}: {v}" for k, v in identifiers.items())
+        (papers_dir / f"{paper_id}.md").write_text(
+            f"---\npaper-id: {paper_id}\nidentifiers:\n{ident_yaml}\n---\n\n# {paper_id}\n"
+        )
+
+    def test_find_paper_returns_match_by_doi(self, tmp_path):
+        self._setup_wiki_with_paper(tmp_path, "smith2020quantum", {"doi": "10.1234/abc"})
+        result = _run_cli(
+            "find-paper", str(tmp_path), "--doi", "10.1234/abc",
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload == {"paper_id": "smith2020quantum"}
+
+    def test_find_paper_returns_null_paper_id_when_no_match(self, tmp_path):
+        # Empty wiki — no papers/ dir
+        (tmp_path / "wiki").mkdir()
+        result = _run_cli(
+            "find-paper", str(tmp_path), "--doi", "10.9999/none",
+        )
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        assert payload == {"paper_id": None}
+
+    def test_find_paper_with_no_identifiers_exits_zero_and_returns_null(self, tmp_path):
+        (tmp_path / "wiki").mkdir()
+        result = _run_cli("find-paper", str(tmp_path))
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        assert payload == {"paper_id": None}
