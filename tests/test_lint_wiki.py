@@ -384,3 +384,55 @@ def test_index_drift_reverse(tmp_wiki):
     rc, out, _ = run_lint(tmp_wiki)
     assert "INDEX_DRIFT" in out
     assert "p1" in out
+
+
+def test_venue_near_duplicates_flagged(tmp_wiki):
+    """Two venue pages with variant-spelling slugs are reported as near-duplicates."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+
+    common = {
+        "type": "venue", "venue-type": "conference",
+        "created": "2026-05-10", "updated": "2026-05-10",
+        "papers": [], "tags": [],
+    }
+    write_frontmatter(
+        str(tmp_wiki / "wiki/venues/ieee-cic-international-conference-on-communications-in-china-iccc.md"),
+        {**common, "name": "IEEE/CIC International Conference on Communications in China",
+         "slug": "ieee-cic-international-conference-on-communications-in-china-iccc"},
+        "Body.\n",
+    )
+    write_frontmatter(
+        str(tmp_wiki / "wiki/venues/ieeecic-international-conference-on-communications-in-china-iccc.md"),
+        {**common, "name": "IEEECIC International Conference on Communications in China",
+         "slug": "ieeecic-international-conference-on-communications-in-china-iccc"},
+        "Body.\n",
+    )
+    rc, out, _ = run_lint(tmp_wiki)
+    assert "VENUE_NEAR_DUPLICATE" in out
+    assert "ieee-cic-international-conference-on-communications-in-china-iccc" in out
+    assert "ieeecic-international-conference-on-communications-in-china-iccc" in out
+
+
+def test_venue_distinct_pairs_not_flagged(tmp_wiki):
+    """Distinct conferences sharing common words are NOT flagged."""
+    from academic_wiki_lib.frontmatter import write_frontmatter
+
+    common = {
+        "type": "venue", "venue-type": "conference",
+        "created": "2026-05-10", "updated": "2026-05-10",
+        "papers": [], "tags": [],
+    }
+    write_frontmatter(
+        str(tmp_wiki / "wiki/venues/ieee-international-conference-on-communications.md"),
+        {**common, "name": "IEEE International Conference on Communications",
+         "slug": "ieee-international-conference-on-communications"},
+        "Body.\n",
+    )
+    write_frontmatter(
+        str(tmp_wiki / "wiki/venues/ieee-international-conference-on-image-processing.md"),
+        {**common, "name": "IEEE International Conference on Image Processing",
+         "slug": "ieee-international-conference-on-image-processing"},
+        "Body.\n",
+    )
+    rc, out, _ = run_lint(tmp_wiki)
+    assert "VENUE_NEAR_DUPLICATE" not in out

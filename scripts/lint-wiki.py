@@ -21,6 +21,7 @@ _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
 from academic_wiki_lib.frontmatter import read_frontmatter
+from academic_wiki_lib.venue_normalize import near_duplicate_pairs
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
@@ -72,6 +73,27 @@ def _parse_date(s) -> date | None:
         return datetime.strptime(str(s), "%Y-%m-%d").date()
     except (TypeError, ValueError):
         return None
+
+
+def _check_venue_near_duplicates(files: dict[str, tuple]) -> list[str]:
+    """Flag pairs of venue page slugs that look like spelling variants of each other.
+
+    Returns a list of issue lines; empty if no pairs.
+    """
+    venue_slugs = []
+    for slug, (path, fm, _) in files.items():
+        if fm.get("type") == "venue":
+            venue_slugs.append(slug)
+    pairs = near_duplicate_pairs(venue_slugs)
+    issues = []
+    for a, b, sim in pairs:
+        a_tail = a.rsplit("-", 1)[-1] if "-" in a else a
+        b_tail = b.rsplit("-", 1)[-1] if "-" in b else b
+        suffix_note = f"; matching acronym suffix {a_tail!r}" if a_tail == b_tail else ""
+        issues.append(
+            f"VENUE_NEAR_DUPLICATE: {a!r} ↔ {b!r} (similarity {sim:.2f}{suffix_note})"
+        )
+    return issues
 
 
 def lint(wiki_root: str) -> int:
@@ -204,6 +226,9 @@ def lint(wiki_root: str) -> int:
                 continue
             if slug not in linked:
                 issues.append(f"INDEX_DRIFT: {slug} exists at {path.relative_to(wr)} but is not in index.md")
+
+    # --- Venue near-duplicate check ---
+    issues.extend(_check_venue_near_duplicates(files))
 
     # --- Report ---
     if not issues:
