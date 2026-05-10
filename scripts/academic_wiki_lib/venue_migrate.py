@@ -10,10 +10,23 @@ import os
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 from .frontmatter import read_frontmatter
 from .venue_normalize import normalize_venue
+
+
+def _to_str_list(val) -> list[str]:
+    """Coerce a YAML field to list[str].
+
+    Real venue pages may have `papers: pX` (a bare scalar) instead of the
+    proper `papers: [pX]`. `list("pX")` would silently produce `['p', 'X']`,
+    so we treat scalars as single-element lists.
+    """
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [str(v) for v in val]
+    return [str(val)]
 
 
 @dataclass
@@ -77,9 +90,9 @@ def _scan_venue_pages(wiki_root: Path) -> tuple[list[VenuePage], list[str]]:
             path=md,
             name=name,
             venue_type=fm.get("venue-type", "journal"),
-            created=str(fm.get("created", "")),
-            papers=list(fm.get("papers") or []),
-            tags=list(fm.get("tags") or []),
+            created=str(fm.get("created", ""))[:10],
+            papers=_to_str_list(fm.get("papers")),
+            tags=_to_str_list(fm.get("tags")),
             body=body,
         ))
     return pages, skipped
@@ -107,11 +120,12 @@ def _resolve_created(members: list[VenuePage]) -> str:
     return valid[0] if valid else ""
 
 
-def compute_plan(wiki_root) -> Plan:
+def compute_plan(wiki_root: str | os.PathLike) -> Plan:
     """Build the migration plan from the on-disk venue pages.
 
-    Excludes no-op groups (a single page whose existing slug already equals
-    its post-normalization slug).
+    Reads `<wiki_root>/wiki/venues/*.md`. Excludes no-op groups
+    (a single page whose existing slug already equals its post-
+    normalization slug).
     """
     root = Path(os.fspath(wiki_root))
     pages, skipped = _scan_venue_pages(root)

@@ -94,6 +94,46 @@ def test_venue_type_majority_with_paper_count_tiebreak(tmp_wiki):
     assert g.new_venue_type == "conference"  # 2-vs-1 majority
 
 
+def test_venue_type_tied_count_broken_by_paper_count(tmp_wiki):
+    """1 conference vs 1 journal → the one with more papers wins."""
+    _venue(tmp_wiki, "2022-fooconf", "2022 FooConf",
+           papers=["p1", "p2"], venue_type="conference")
+    _venue(tmp_wiki, "2023-fooconf", "2023 FooConf",
+           papers=["p3"], venue_type="journal")
+    plan = compute_plan(tmp_wiki)
+    assert plan.groups[0].new_venue_type == "conference"
+
+
+def test_venue_type_tied_count_and_papers_broken_by_lex_slug(tmp_wiki):
+    """Both ties broken by lex-smallest old slug."""
+    _venue(tmp_wiki, "2022-fooconf", "2022 FooConf",
+           papers=["p1"], venue_type="journal")
+    _venue(tmp_wiki, "2023-fooconf", "2023 FooConf",
+           papers=["p2"], venue_type="conference")
+    plan = compute_plan(tmp_wiki)
+    # 2022-fooconf is lex-smaller; its venue_type is journal → wins.
+    assert plan.groups[0].new_venue_type == "journal"
+
+
+def test_papers_field_tolerates_scalar_yaml(tmp_wiki):
+    """A venue page with 'papers: pX' (bare scalar) is read as ['pX'], not ['p', 'X']."""
+    fm = {
+        "type": "venue",
+        "name": "2022 FooConf",
+        "slug": "2022-fooconf",
+        "venue-type": "conference",
+        "created": "2024-01-01",
+        "updated": "2024-01-01",
+        "papers": "p1",  # scalar, not list
+        "tags": "field/x",  # scalar, not list
+    }
+    write_frontmatter(str(tmp_wiki / "wiki/venues/2022-fooconf.md"), fm, "Body\n")
+    plan = compute_plan(tmp_wiki)
+    g = plan.groups[0]
+    assert g.new_papers == ["p1"]
+    assert g.new_tags == ["field/x"]
+
+
 def test_created_earliest_wins(tmp_wiki):
     """The merged page's created: is the earliest across members."""
     _venue(tmp_wiki, "2022-fooconf", "2022 FooConf", papers=["p1"], created="2025-01-01")
