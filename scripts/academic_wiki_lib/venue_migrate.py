@@ -200,7 +200,7 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
         lines.append("## Renames (single-page groups)")
         for g in renames:
             old = g.members[0].slug
-            lines.append(f"- `{old}` → {g.new_slug}")
+            lines.append(f"- `{old}` → `{g.new_slug}`")
         lines.append("")
 
     if merges:

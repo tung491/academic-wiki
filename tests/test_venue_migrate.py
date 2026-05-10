@@ -260,7 +260,7 @@ def test_render_report_summary_counts(tmp_wiki):
     assert "asilomar-conference-on-signals-systems-and-computers" in report
     assert "merges 2 pages" in report
     # AINA rename appears (single page)
-    assert "→ aina" in report
+    assert "→ `aina`" in report
     # The IEEE Transactions venue is a no-op so does not appear
     assert "IEEE Transactions" not in report or "Transactions on Communications" not in report.split("## Skipped")[0]
 
