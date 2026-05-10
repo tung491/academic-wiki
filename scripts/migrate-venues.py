@@ -7,8 +7,7 @@ report or applies the consolidation (renames + merges + paper-page rewrites).
 from __future__ import annotations
 
 import argparse
-import os
-import subprocess
+import subprocess  # used by _run_apply (Tasks 11-14, git mv / git tag / git commit)
 import sys
 from datetime import date
 from pathlib import Path
@@ -26,10 +25,11 @@ def _today() -> str:
 
 def _run_dry_run(wiki_root: Path) -> tuple[int, str]:
     """Compute plan, write report. Return (exit_code, report_path)."""
+    today = _today()
     plan = compute_plan(wiki_root)
     rewrites = collect_paper_rewrites(wiki_root, plan)
-    report = render_report(plan, rewrites, today=_today())
-    out_path = wiki_root / "outputs" / "reports" / f"{_today()}-venue-migration.md"
+    report = render_report(plan, rewrites, today=today)
+    out_path = wiki_root / "outputs" / "reports" / f"{today}-venue-migration.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
     return 0, str(out_path)

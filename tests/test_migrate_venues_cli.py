@@ -42,6 +42,10 @@ def test_dry_run_writes_report_and_changes_nothing_else(tmp_git_wiki):
     subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "venue"], cwd=tmp_git_wiki, check=True)
 
+    # Hash everything that should be untouched by dry-run (excludes outputs/, where
+    # the report lands, and .lock which the script transiently creates).
+    wiki_dir_hash_before = _dirhash(tmp_git_wiki / "wiki")
+
     result = run_migrate(tmp_git_wiki, "--dry-run")
     assert result.returncode == 0, result.stderr
 
@@ -51,6 +55,9 @@ def test_dry_run_writes_report_and_changes_nothing_else(tmp_git_wiki):
     report = reports[0].read_text()
     assert "asilomar-conference-on-signals-systems-and-computers" in report
     assert "Renames" in report
+
+    # Wiki tree byte-identical (no rename, no frontmatter mutation, no body edit).
+    assert _dirhash(tmp_git_wiki / "wiki") == wiki_dir_hash_before
 
     # The venue file was not renamed (--dry-run is read-only)
     assert (tmp_git_wiki / "wiki/venues/2022-56th-asilomar-conference-on-signals-systems-and-computers.md").exists()
@@ -70,10 +77,15 @@ def test_default_is_dry_run(tmp_git_wiki):
 
 
 def test_lock_held_aborts(tmp_git_wiki):
-    """If .lock is held by a live pid, both --dry-run and --apply fail."""
+    """If .lock is held by a live pid, both --dry-run and --apply fail before doing any work."""
     import os
     # Create a lock with our own pid
     (tmp_git_wiki / ".lock").write_text(f"{os.getpid()}:2026-05-10T000000Z:other")
-    result = run_migrate(tmp_git_wiki, "--dry-run")
-    assert result.returncode != 0
-    assert "lock" in (result.stderr + result.stdout).lower()
+
+    dry = run_migrate(tmp_git_wiki, "--dry-run")
+    assert dry.returncode != 0
+    assert "lock" in (dry.stderr + dry.stdout).lower()
+
+    apply_ = run_migrate(tmp_git_wiki, "--apply")
+    assert apply_.returncode != 0
+    assert "lock" in (apply_.stderr + apply_.stdout).lower()
