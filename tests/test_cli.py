@@ -106,3 +106,30 @@ class TestFindPaper:
         assert result.returncode == 0
         payload = json.loads(result.stdout)
         assert payload == {"paper_id": None}
+
+
+class TestPaperId:
+    def test_paper_id_generates_no_collision(self, tmp_path):
+        result = _run_cli(
+            "paper-id", str(tmp_path),
+            "--lastname", "Smith",
+            "--year", "2020",
+            "--title", "Quantum Foo Bar",
+        )
+        assert result.returncode == 0, result.stderr
+        # First meaningful word of "Quantum Foo Bar" is "quantum"
+        assert result.stdout.strip() == "smith2020quantum"
+
+    def test_paper_id_resolves_collision_with_numeric_suffix(self, tmp_path):
+        # Plant an existing paper at the would-be id
+        papers = tmp_path / "wiki" / "papers"
+        papers.mkdir(parents=True)
+        (papers / "smith2020quantum.md").write_text("---\npaper-id: smith2020quantum\n---\n")
+        result = _run_cli(
+            "paper-id", str(tmp_path),
+            "--lastname", "Smith",
+            "--year", "2020",
+            "--title", "Quantum Other Title",
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "smith2020quantum2"

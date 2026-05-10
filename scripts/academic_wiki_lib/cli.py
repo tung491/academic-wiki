@@ -49,6 +49,14 @@ def _cmd_find_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_paper_id(args: argparse.Namespace) -> int:
+    from academic_wiki_lib.paper_id import generate_paper_id, resolve_collision
+    pid = generate_paper_id(args.lastname, args.year, args.title)
+    pid = resolve_collision(args.wiki_root, pid)
+    print(pid)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="academic_wiki_lib.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -72,6 +80,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--arxiv", default=None)
     p.add_argument("--url", default=None)
     p.set_defaults(func=_cmd_find_paper)
+
+    p = sub.add_parser("paper-id", help="Generate a unique paper-id for a new paper")
+    p.add_argument("wiki_root")
+    p.add_argument("--lastname", required=True)
+    p.add_argument("--year", type=int, required=True)
+    p.add_argument("--title", required=True)
+    p.set_defaults(func=_cmd_paper_id)
 
     return parser
 
