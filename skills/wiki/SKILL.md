@@ -430,8 +430,8 @@ Batch mode replaces the per-paper loop with wave-based parallel subagents. Full 
 
 1. **Acquire lockfile** (same as sequential path).
 2. **Create or resume checkpoint** at `outputs/.compile-checkpoint.yml`.
-3. **Partition pending papers into waves** (~200 papers per wave, 10-15 subagents per wave).
-4. **For each wave:** spawn Sonnet subagents in parallel (`run_in_background: true`, `model: "sonnet"`, `mode: "auto"`). Each subagent receives a batch of `{paper-id, extract-path}` tuples. For full-tier batches, use `references/batch-compile-full-prompt.md` (interpolating `{{PRE_BATCH_PAPERS}}`, `{{PRE_BATCH_SNAPSHOT_PATH}}`, `{{TODAY}}`, plus the existing `{{WIKI_ROOT}}`, `{{PAPER_LIST}}`, `{{PYTHONPATH}}`); for paper-only, use `references/batch-compile-prompt.md`. Subagents write `wiki/papers/`, `wiki/venues/`, and — for full-tier — `wiki/concepts/`, `wiki/methods/`, `wiki/open-problems/`, and candidate entries under `outputs/reports/`.
+3. **Partition pending papers into waves** (3 subagents per wave; wave-size depends on tier — see `references/compilation-guide.md`).
+4. **For each wave:** spawn Haiku subagents in parallel (`run_in_background: true`, `model: "haiku"`, `mode: "auto"`). Each subagent receives a batch of `{paper-id, extract-path}` tuples. For full-tier batches, use `references/batch-compile-full-prompt.md` (interpolating `{{PRE_BATCH_PAPERS}}`, `{{PRE_BATCH_SNAPSHOT_PATH}}`, `{{TODAY}}`, plus the existing `{{WIKI_ROOT}}`, `{{PAPER_LIST}}`, `{{PYTHONPATH}}`); for paper-only, use `references/batch-compile-prompt.md`. Subagents write `wiki/papers/`, `wiki/venues/`, and — for full-tier — `wiki/concepts/`, `wiki/methods/`, `wiki/open-problems/`, and candidate entries under `outputs/reports/`.
 5. **Collect results:** parse subagent output, update checkpoint, commit wave.
 6. **Retry failed papers** in a single retry wave.
 6b. **Final orchestrator pass** (full-tier only): resolve intra-batch cites + backlinks. See compilation-guide.md "Final orchestrator pass (full-tier only)". Transitions `final-pass-status` from `pending` to `in-progress` to `ok`.

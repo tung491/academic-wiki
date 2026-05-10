@@ -71,7 +71,7 @@ Key principles:
 
 ## Batch compile mode
 
-Batch mode orchestrates parallel Sonnet subagents for bulk compilation. The subagents handle per-paper work (steps 1–5 + 4b from *Per-source steps*). The orchestrator handles checkpoint management, wave coordination, git commits, and index/log updates.
+Batch mode orchestrates parallel Haiku subagents for bulk compilation. The subagents handle per-paper work (steps 1–5 + 4b from *Per-source steps*). The orchestrator handles checkpoint management, wave coordination, git commits, and index/log updates.
 
 ### Activation
 
@@ -113,14 +113,14 @@ Note: `pre-batch-backlink-targets` is **not** stored in the checkpoint. It lives
 2. Filter out any `paper_id` already marked `ok` in the checkpoint (resume case).
 3. From the remaining papers, keep only those where the extract is **newer** than the paper page (compare `extracted-at` frontmatter vs `updated:` on `wiki/papers/<paper-id>.md`) **or** the paper page does not yet exist.
 4. Partition into waves using the `wave-size` field in the checkpoint, which stores **papers per wave** (not agent count):
-   - Target ~200 papers per wave: `papers_per_wave = min(len(pending), 200)`. (Capacity is 15 subagents × 20 papers = 300, but ~200 gives better balance and keeps context manageable.)
-   - Split each wave into subagent batches of `ceil(papers_per_wave / 15)` papers each, capped at **20 papers per subagent**.
+   - Target up to 60 papers per wave: `papers_per_wave = min(len(pending), 60)`. (Capacity is 3 subagents × 20 papers = 60.)
+   - Split each wave into subagent batches of `ceil(papers_per_wave / 3)` papers each, capped at **20 papers per subagent**.
    - Each wave is a list of subagent batches, where each batch is a list of `{paper-id, extract-path}` tuples.
 
 **Full-tier vs. paper-only sizing:**
 
-- **Full-tier:** wave-size is ~100 papers (10 subagents × 10 papers each). Each subagent's batch is capped at **10 papers** to keep entity extraction + backlink context manageable.
-- **Paper-only:** wave-size is ~200 papers (15 subagents × 20 papers each; original values above).
+- **Full-tier:** wave-size is ~30 papers (3 subagents × 10 papers each). Each subagent's batch is capped at **10 papers** to keep entity extraction + backlink context manageable.
+- **Paper-only:** wave-size is ~60 papers (3 subagents × 20 papers each; matches the values above).
 
 ### Pre-batch snapshot (full-tier only)
 
@@ -152,7 +152,7 @@ This step is skipped for paper-only batches and skipped on resume (snapshot alre
 
 For each wave, spawn all subagents **in a single message** (parallel tool calls) using the Agent tool:
 
-- `model: "sonnet"`
+- `model: "haiku"`
 - `mode: "auto"`
 - `run_in_background: true`
 - **Template selection:** use `references/batch-compile-full-prompt.md` for full-tier batches; use `references/batch-compile-prompt.md` for paper-only batches.
