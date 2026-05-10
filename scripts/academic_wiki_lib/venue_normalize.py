@@ -132,11 +132,13 @@ def near_duplicate_pairs(
 
     A pair is flagged when EITHER:
       - similarity >= threshold (default 0.92), OR
-      - similarity >= acronym_threshold (default 0.85) AND the slugs share
+      - similarity >= acronym_threshold (default 0.80) AND the slugs share
         the same trailing hyphen-token (matching acronym suffix).
 
     Similarity is difflib.SequenceMatcher().ratio() over the space-joined
-    token form of each slug.
+    token form of each slug. The acronym_threshold was empirically calibrated
+    against real conference-pair scores: matching-acronym variants score
+    ~0.83-0.97, while distinct conferences sharing common words score ~0.72.
     """
     slug_list = sorted(set(slugs))
     out: list[tuple[str, str, float]] = []

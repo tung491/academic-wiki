@@ -275,7 +275,7 @@ def near_duplicate_pairs(
 
 **Threshold choice.** 0.92 catches `ieee-cic` ↔ `ieeecic` (one missing hyphen → ~0.97 token-set similarity) without flagging genuinely distinct conferences.
 
-**Acronym-suffix reinforcement.** If two slugs share the same trailing token (after splitting on `-`) AND have similarity ≥ 0.85, also flag them. Catches cases where the acronym matches but the prefix has more drift.
+**Acronym-suffix reinforcement.** If two slugs share the same trailing token (after splitting on `-`) AND have similarity ≥ 0.80, also flag them. Catches cases where the acronym matches but the prefix has more drift. (0.80 was empirically calibrated; matching-acronym variant pairs score ~0.83–0.97 while distinct conferences sharing common words score ~0.72.)
 
 **Lint report integration:**
 
