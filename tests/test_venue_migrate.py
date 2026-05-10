@@ -1,10 +1,14 @@
-"""Tests for venue_migrate.compute_plan — pure plan-building logic."""
+"""Tests for venue_migrate — compute_plan, collect_paper_rewrites, and related helpers."""
 from pathlib import Path
 
 import pytest
 
 from academic_wiki_lib.frontmatter import write_frontmatter
-from academic_wiki_lib.venue_migrate import compute_plan
+from academic_wiki_lib.venue_migrate import (
+    PaperRewrite,
+    collect_paper_rewrites,
+    compute_plan,
+)
 
 
 def _venue(tmp_wiki, slug, name, papers=None, tags=None, venue_type="conference",
@@ -152,9 +156,6 @@ def test_unparseable_frontmatter_listed_separately(tmp_wiki):
     assert any("broken.md" in s for s in plan.skipped)
 
 
-from academic_wiki_lib.venue_migrate import collect_paper_rewrites, PaperRewrite
-
-
 def _paper(tmp_wiki, slug, venue_slug, extra_tags=()):
     fm = {
         "paper-id": slug, "type": "paper", "status": "read",
@@ -195,3 +196,38 @@ def test_collect_paper_rewrites_skips_papers_pointing_at_no_op_slugs(tmp_wiki):
     plan = compute_plan(tmp_wiki)
     rewrites = collect_paper_rewrites(tmp_wiki, plan)
     assert rewrites == []
+
+
+def test_collect_paper_rewrites_skips_paper_already_at_canonical_in_merge(tmp_wiki):
+    """In a merge group, a paper whose venue: already equals new_slug is not rewritten."""
+    _venue(tmp_wiki, "asilomar-conference-on-signals-systems-and-computers",
+           "Asilomar Conference on Signals, Systems, and Computers", papers=["pCanonical"])
+    _venue(tmp_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pOld"])
+    _paper(tmp_wiki, "pCanonical", "asilomar-conference-on-signals-systems-and-computers")
+    _paper(tmp_wiki, "pOld", "2022-56th-asilomar-conference-on-signals-systems-and-computers")
+    plan = compute_plan(tmp_wiki)
+    rewrites = collect_paper_rewrites(tmp_wiki, plan)
+    rewritten = {r.paper_id for r in rewrites}
+    assert rewritten == {"pOld"}  # pCanonical stays as-is
+
+
+def test_collect_paper_rewrites_tag_only_when_venue_field_absent(tmp_wiki):
+    """Tag fallback works when venue: is absent and only the venue/* tag matches."""
+    _venue(tmp_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    fm = {
+        "paper-id": "pA", "type": "paper", "status": "read",
+        "created": "2024-01-01", "updated": "2024-01-01",
+        "title": "T", "authors": [], "year": 2024,
+        "venue": None,
+        "identifiers": {}, "aliases": [], "bib-file": "x",
+        "extract": "x", "references-raw": [], "cites": [],
+        "tags": ["venue/2022-56th-asilomar-conference-on-signals-systems-and-computers"],
+    }
+    write_frontmatter(str(tmp_wiki / "wiki/papers/pA.md"), fm, "Body.\n")
+    plan = compute_plan(tmp_wiki)
+    rewrites = collect_paper_rewrites(tmp_wiki, plan)
+    assert len(rewrites) == 1
+    assert rewrites[0].paper_id == "pA"
+    assert rewrites[0].old_slug == "2022-56th-asilomar-conference-on-signals-systems-and-computers"

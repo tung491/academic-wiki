@@ -67,6 +67,11 @@ class Plan:
 
 @dataclass
 class PaperRewrite:
+    """A paper page that needs its venue: field and venue/* tag rewritten.
+
+    When `venue:` and a `venue/*` tag disagree on the old slug, the `venue:`
+    field wins as the authoritative source and is what `old_slug` records.
+    """
     paper_id: str
     path: Path
     old_slug: str
