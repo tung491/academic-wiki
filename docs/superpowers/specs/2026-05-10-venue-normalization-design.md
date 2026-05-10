@@ -167,21 +167,23 @@ Default if neither flag given: `--dry-run`. `--apply` requires a clean working t
      new_tags:   list[str],      # union of all members' field/* tags
    }
    ```
-   Groups with `len(members) == 1` and `member.slug == new_slug` are no-op groups (skipped from the plan).
+   A group is a "no-op" only when `len(members) == 1` AND that single member's existing slug equals `new_slug`. If a canonical-slug page already exists *and* one or more non-canonical-slug pages normalize to the same `new_slug`, all of them are members of the same merge group — the canonical page is not skipped, it's merged into (its `papers:` and `tags:` get unioned with the others, its body becomes the "Merged from" anchor).
 3. **Find paper-page rewrites** — for each member of every group, scan `wiki/papers/*.md` for any paper whose `venue: <old-slug>` or whose `tags:` contains `venue/<old-slug>`. Collect rewrites.
 4. **Find near-duplicate pairs** — `near_duplicate_pairs(new_slugs)` on post-normalization slugs. Surface variant-spelling collisions in the report.
 5. **Write the dry-run report** to `outputs/reports/<YYYY-MM-DD>-venue-migration.md` (format below).
 6. **Stop here on `--dry-run`.** Print report path; release lock.
 7. **On `--apply`:**
-   1. Tag `snapshot/pre-venue-migration-<YYYY-MM-DD>` on the wiki repo (rollback path).
-   2. For each merge group, write the canonical page via `venue_md_stub(slug=new_slug, name=new_canonical_name, venue_type=<resolved>, paper_ids=<union>, field_tags=<union>, today=<today>)`. Append a "Merged from" body section listing each source's old slug, old name, and a verbatim copy of the source's body content.
-   3. Collect merge-source slugs into the canonical page's `aliases:`.
-   4. Delete the source pages from disk (their content is archived).
-   5. For each rename (single-page group), `git mv` the file and rewrite `slug:` and `name:` frontmatter. Add the old slug to `aliases:`.
-   6. For each paper-page rewrite, update `venue:` and the `venue/*` tag. Bump `updated:` to today.
-   7. Append to `log.md`: `## [YYYY-MM-DD] migrate-venues | merged N→M, renamed K, rewrote P paper pages`.
-   8. Single commit: `migrate: venue normalization (N→M merges, K renames, P paper rewrites)`.
-   9. Release lock.
+   1. Re-run phases 2–4 (scan, find rewrites, find near-duplicates) — do not trust a stale dry-run plan, since the wiki may have changed in the interim.
+   2. Write the final applied report to `outputs/reports/<YYYY-MM-DD>-venue-migration.md` (overwrites any prior dry-run report from the same day; the prior version is recoverable via git).
+   3. Tag `snapshot/pre-venue-migration-<YYYY-MM-DD>` on the wiki repo (rollback path).
+   4. For each merge group, write the canonical page via `venue_md_stub(slug=new_slug, name=new_canonical_name, venue_type=<resolved>, paper_ids=<union>, field_tags=<union>, today=<today>)`. Append a "Merged from" body section listing each source's old slug, old name, and a verbatim copy of the source's body content.
+   5. Collect merge-source slugs into the canonical page's `aliases:`.
+   6. Delete the source pages from disk (their content is archived).
+   7. For each rename (single-page group), `git mv` the file and rewrite `slug:` and `name:` frontmatter. Add the old slug to `aliases:`.
+   8. For each paper-page rewrite, update `venue:` and the `venue/*` tag. Bump `updated:` to today.
+   9. Append to `log.md`: `## [YYYY-MM-DD] migrate-venues | merged N→M, renamed K, rewrote P paper pages`.
+   10. Single commit covering the report, venue page changes, paper page rewrites, and `log.md`: `migrate: venue normalization (N→M merges, K renames, P paper rewrites)`.
+   11. Release lock.
 
 ### Dry-run report format
 
@@ -228,7 +230,7 @@ New `venue-type:` conference (existing — preserved if unanimous; otherwise fla
 
 ### Conflict resolution rules during merge
 
-- **`venue-type:`** — if all members agree, use it. Otherwise, most common; ties broken by the page with the most `papers:`. Conflicts logged in the report.
+- **`venue-type:`** — if all members agree, use it. Otherwise, most common; ties broken by the page with the most `papers:`; if still tied, lex-smallest old slug wins. Conflicts logged in the report.
 - **`created:`** — earliest across members.
 
 ### Idempotency
@@ -245,7 +247,8 @@ No automatic rollback mid-apply. The pre-migration snapshot tag is the rollback 
 - Dirty git tree.
 - Any venue page has unparseable frontmatter (dry-run flagged it; user must fix).
 - `normalize_venue` raises `ValueError` for any existing venue's `name:`. Abort with the offending page.
-- Any paper page references a `venue:` slug that doesn't exist as a venue page. Caught by lint already; abort migration with "run lint first."
+
+Paper pages with `venue:` values that don't match any existing venue page are *not* a stop condition — those are pre-existing dead references that migration neither fixes nor breaks; lint is the right place to surface them, separately from this migration.
 
 ## Lint near-duplicate detection
 
