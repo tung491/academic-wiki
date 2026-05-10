@@ -5,6 +5,7 @@ different editions of the same conference series collapse to one slug.
 """
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -109,17 +110,49 @@ def normalize_venue(raw: str) -> tuple[str, str]:
     return canonical_name, slug
 
 
+def _slug_token_string(slug: str) -> str:
+    """Convert a hyphen-slug to a space-joined token string for SequenceMatcher.
+
+    Ratio is computed over space-separated tokens so word-level edits
+    (one missing hyphen → one merged token) move the score more than
+    character-level noise.
+    """
+    return " ".join(slug.split("-"))
+
+
 def near_duplicate_pairs(
     slugs: Iterable[str],
     threshold: float = 0.92,
+    acronym_threshold: float = 0.80,
 ) -> list[tuple[str, str, float]]:
-    """Return pairs (slug_a, slug_b, similarity) with similarity >= threshold.
+    """Pairwise near-duplicate detection over venue slugs.
 
-    Uses difflib.SequenceMatcher on the space-joined token list (split on '-').
-    Symmetric: (a, b) appears once with a < b lexicographically.
-    Acronym-suffix reinforcement: slugs sharing the same trailing token AND
-    similarity >= 0.85 are also flagged.
+    Returns list of (slug_a, slug_b, similarity) where slug_a < slug_b
+    lexicographically (no duplicates), sorted by descending similarity.
 
-    Not yet implemented — see Task 4.
+    A pair is flagged when EITHER:
+      - similarity >= threshold (default 0.92), OR
+      - similarity >= acronym_threshold (default 0.85) AND the slugs share
+        the same trailing hyphen-token (matching acronym suffix).
+
+    Similarity is difflib.SequenceMatcher().ratio() over the space-joined
+    token form of each slug.
     """
-    raise NotImplementedError
+    slug_list = sorted(set(slugs))
+    out: list[tuple[str, str, float]] = []
+    for i in range(len(slug_list)):
+        a = slug_list[i]
+        a_tokens = _slug_token_string(a)
+        a_tail = a.rsplit("-", 1)[-1] if "-" in a else a
+        for j in range(i + 1, len(slug_list)):
+            b = slug_list[j]
+            b_tokens = _slug_token_string(b)
+            sim = difflib.SequenceMatcher(None, a_tokens, b_tokens).ratio()
+            if sim >= threshold:
+                out.append((a, b, sim))
+                continue
+            b_tail = b.rsplit("-", 1)[-1] if "-" in b else b
+            if a_tail and a_tail == b_tail and sim >= acronym_threshold:
+                out.append((a, b, sim))
+    out.sort(key=lambda p: p[2], reverse=True)
+    return out
