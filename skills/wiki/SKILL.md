@@ -18,13 +18,23 @@ Walk up from `cwd` looking for a directory with both `CLAUDE.md` and a `wiki/` s
 
 ## Helper invocation
 
-All Python helpers live at `${CLAUDE_PLUGIN_ROOT}/scripts/academic_wiki_lib/`. Invoke via:
+All Python helpers live at `${CLAUDE_PLUGIN_ROOT}/scripts/academic_wiki_lib/`. Invoke them through the cross-shell CLI shim — the same command line works in bash, zsh, PowerShell, and cmd:
 
 ```bash
-PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -c "from academic_wiki_lib import <module>; ..."
+# POSIX (bash/zsh)
+export PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+PY="${HOME}/.venv/bin/python"  # fall back to python3 if not present
+"$PY" -m academic_wiki_lib.cli <subcommand> [args]
 ```
 
-For the user's local setup, `~/.venv/bin/python` should be used if present (the system Python may lack pyyaml). Prefer `~/.venv/bin/python` when available; fall back to `python3`.
+```powershell
+# Windows PowerShell
+$env:PYTHONPATH = "$env:CLAUDE_PLUGIN_ROOT\scripts"
+$PY = "$env:CLAUDE_PLUGIN_ROOT\.venv\Scripts\python.exe"
+& $PY -m academic_wiki_lib.cli <subcommand> [args]
+```
+
+Available subcommands: `acquire`, `release`, `source-sha`, `find-paper`, `paper-id`. See `scripts/academic_wiki_lib/cli.py` for the full list and arguments. For helpers not yet covered by a subcommand, use inline Python on POSIX: invoke `$PY` with `-c` and `from academic_wiki_lib import <module>; ...` (Windows users open an issue or extend cli.py).
 
 CLI entry points (used in Wave 3+):
 - `${CLAUDE_PLUGIN_ROOT}/scripts/lint-wiki.py`
@@ -165,18 +175,9 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 1. **Acquire lockfile:**
     ```bash
-    "$PY" -c "
-    import sys; sys.path.insert(0, '${PYTHONPATH}')
-    from academic_wiki_lib.lockfile import acquire
-    acquire('${WIKI_ROOT}/.lock', op='ingest')
-    "
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op ingest
     ```
     If this fails with `LockHeld`, another operation is in progress — print the error and exit.
-
-    Also set a trap so the lock is released even if a later step fails:
-    ```bash
-    trap '"$PY" -c "import sys; sys.path.insert(0, \"${PYTHONPATH}\"); from academic_wiki_lib.lockfile import release; release(\"${WIKI_ROOT}/.lock\")"' EXIT
-    ```
 
 2. **Route input:** see `references/ingestion-routing.md`. Given the user's input string:
    - Match against each pattern in order; first match wins.
@@ -185,11 +186,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 3. **Compute source-sha:**
     ```bash
-    "$PY" -c "
-    import sys; sys.path.insert(0, '${PYTHONPATH}')
-    from academic_wiki_lib.source_sha import file_sha256
-    print(file_sha256('<raw-source-path>'))
-    "
+    "$PY" -m academic_wiki_lib.cli source-sha "<raw-source-path>"
     ```
 
 4. **Dedup pass 1 (byte-level):** scan BOTH `raw/extracts/*.md` AND `raw/papers/*/` clipper `.md` files for a matching `source-sha` field in frontmatter. If found, release lock, print `This exact source was already ingested as <existing-paper-id>. Skipping.` and exit.
@@ -202,13 +199,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 6. **Dedup pass 2 (identifier-level):**
     ```bash
-    "$PY" -c "
-    import sys, json; sys.path.insert(0, '${PYTHONPATH}')
-    from academic_wiki_lib.paper_id import find_existing_paper_by_identifiers
-    identifiers = {'doi': 'X', 'arxiv': 'Y'}  # as extracted
-    result = find_existing_paper_by_identifiers('${WIKI_ROOT}', identifiers)
-    print(result or '')
-    "
+    "$PY" -m academic_wiki_lib.cli find-paper "$WIKI_ROOT" --doi "<doi-or-empty>" --arxiv "<arxiv-or-empty>" --url "<url-or-empty>"
     ```
     Compare extracted identifiers against every existing paper page's `identifiers:`. If any non-empty identifier matches (`doi`, `arxiv` ignoring version, `url`), the paper already exists:
     - a. Load the existing `paper-id`.
@@ -219,13 +210,7 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 7. **Generate paper-id** (new paper):
     ```bash
-    "$PY" -c "
-    import sys; sys.path.insert(0, '${PYTHONPATH}')
-    from academic_wiki_lib.paper_id import generate_paper_id, resolve_collision
-    pid = generate_paper_id('Lastname', 2017, 'Title Words')
-    pid = resolve_collision('${WIKI_ROOT}', pid)
-    print(pid)
-    "
+    "$PY" -m academic_wiki_lib.cli paper-id "$WIKI_ROOT" --lastname "Lastname" --year 2017 --title "Title Words"
     ```
     Format: `<lastname><year><firstword>` (no separators). If already taken by a different paper (different identifiers), append `2`, `3`, ... directly (no separator) until unique. `resolve_collision()` scans both `wiki/papers/*.md` filenames AND `paper-id` values in clipper `.md` frontmatter under `raw/papers/*/`.
 
@@ -275,13 +260,9 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
     - `ingest: <paper-id> (new version v5)` — if step 8 was reached
     - `ingest: deduped <paper-id>` — if step 4 matched (though execution exits there)
 
-15. **Release lockfile** (the EXIT trap from step 1 handles this automatically; also call explicitly after commit):
+15. **Release lockfile** (call explicitly after commit):
     ```bash
-    "$PY" -c "
-    import sys; sys.path.insert(0, '${PYTHONPATH}')
-    from academic_wiki_lib.lockfile import release
-    release('${WIKI_ROOT}/.lock')
-    "
+    "$PY" -m academic_wiki_lib.cli release "$WIKI_ROOT"
     ```
 
 16. **Print confirmation:**
@@ -291,13 +272,13 @@ Detect the active wiki (via `academic_wiki_lib.wiki_paths.find_active_wiki` from
 
 ### Error recovery
 
-If any step 2–14 fails after the lock is acquired, the skill MUST still release the lock. The `trap` set in step 1 ensures this:
+If any step 2–14 fails after the lock is acquired, the skill MUST still release the lock. Call `release` explicitly on every error-exit path inside this command's step list:
 
 ```bash
-trap '"$PY" -c "import sys; sys.path.insert(0, \"${PYTHONPATH}\"); from academic_wiki_lib.lockfile import release; release(\"${WIKI_ROOT}/.lock\")"' EXIT
+"$PY" -m academic_wiki_lib.cli release "$WIKI_ROOT"
 ```
 
-This fires on any exit (normal or error). The explicit release in step 15 is not strictly required when the trap is set, but is included for clarity. If the trap cannot be set (e.g., non-bash shell), wrap steps 2–14 in a try/finally in Python and call release in the finally block.
+If the agent process itself crashes between acquire and release, the next mutating operation invokes the lockfile's stale-PID recovery (`_is_alive(holder_pid)` returns False on POSIX and Windows), warns once, and takes the lock cleanly. No bash trap is required for this — recovery is platform-agnostic.
 
 ## `compile [<paper-id>] [--paper-only]`
 
@@ -326,12 +307,7 @@ For detailed behavior see `references/compilation-guide.md`.
 
 1. **Acquire lockfile** (op=`compile`):
     ```bash
-    "$PY" -c "
-    import sys; sys.path.insert(0, '$PYTHONPATH')
-    from academic_wiki_lib.lockfile import acquire
-    acquire('$WIKI_ROOT/.lock', op='compile')
-    "
-    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op compile
     ```
 
 2. **Identify sources to compile:**
@@ -593,8 +569,7 @@ Lint is read-only by default. Only the opt-in `--fix-*` passes acquire the lockf
 
 2. **Opt-in pass `--fix-dead-links`:** LLM creates stubs for each `DEAD_LINK` issue. Before running, acquire the lockfile:
     ```bash
-    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='lint')"
-    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op lint
     ```
 
     For each `DEAD_LINK: [[foo]] in <file>:<line>`:
@@ -676,8 +651,7 @@ At least one of `--project`, `--field`, `--tag`, `--query`, `--keys`, `--since` 
 
 2. **Acquire lockfile:**
     ```bash
-    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='export')"
-    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op export
     ```
 
 3. **Invoke the CLI:**
@@ -740,8 +714,7 @@ Tag the wiki's state for reproducibility — e.g., the state when you submitted 
 
 1. **Acquire lockfile:**
     ```bash
-    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='snapshot')"
-    trap '"$PY" -c "import sys; sys.path.insert(0, \"'$PYTHONPATH'\"); from academic_wiki_lib.lockfile import release; release(\"'$WIKI_ROOT'/.lock\")"' EXIT
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op snapshot
     ```
 
 2. **Validate label.** Require a non-empty label. Git tag names cannot contain spaces, `~`, `^`, `:`, `?`, `*`, `[`, `\`, or end in `.lock`. Sanitize by replacing whitespace with `-` and rejecting invalid characters:
@@ -897,8 +870,8 @@ Delete a wiki and its nested git repo after explicit confirmation. Destructive �
 
 5. **Acquire the lockfile to prevent concurrent mutation during removal:**
     ```bash
-    "$PY" -c "import sys; sys.path.insert(0, '$PYTHONPATH'); from academic_wiki_lib.lockfile import acquire; acquire('$WIKI_ROOT/.lock', op='remove')"
-    # NO trap for release — the lock file goes away with the directory.
+    "$PY" -m academic_wiki_lib.cli acquire "$WIKI_ROOT" --op remove
+    # NO release needed — the lock file goes away with the directory.
     ```
 
 6. **Remove the qmd collection if installed:**
