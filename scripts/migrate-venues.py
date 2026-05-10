@@ -17,6 +17,7 @@ sys.path.insert(0, str(_HERE))
 
 from academic_wiki_lib.frontmatter import read_frontmatter, write_frontmatter
 from academic_wiki_lib.lockfile import LockHeld, acquire, release
+from academic_wiki_lib.templates import venue_md_stub
 from academic_wiki_lib.venue_migrate import (
     Group,
     PaperRewrite,
@@ -74,6 +75,80 @@ def _apply_rename(wiki_root: Path, group: Group, today: str) -> None:
     write_frontmatter(new_path, fm, body)
 
 
+def _split_stub(stub: str) -> tuple[dict, str]:
+    """Parse a venue_md_stub() string into (fm dict, body)."""
+    import yaml
+    if not stub.startswith("---\n"):
+        return {}, stub
+    rest = stub[4:]
+    end = rest.find("\n---\n")
+    if end < 0:
+        return {}, stub
+    fm_text = rest[:end]
+    body = rest[end + 5:]
+    fm = yaml.safe_load(fm_text) or {}
+    return fm, body
+
+
+def _apply_merge(wiki_root: Path, group: Group, today: str) -> None:
+    """Merge a multi-page group into the canonical slug page.
+
+    Writes the canonical page (overwrites if it exists), archives every
+    member's body under a 'Merged from' section, deletes the source pages
+    (except the canonical one if it pre-existed). All old slugs become aliases.
+    """
+    venues_dir = wiki_root / "wiki" / "venues"
+    canon_path = venues_dir / f"{group.new_slug}.md"
+
+    # Stub frontmatter + standard preamble body
+    stub = venue_md_stub(
+        slug=group.new_slug,
+        name=group.new_canonical_name,
+        venue_type=group.new_venue_type,
+        paper_ids=group.new_papers,
+        field_tags=group.new_tags,
+        today=today,
+    )
+    stub_fm, stub_body = _split_stub(stub)
+    if group.new_created:
+        stub_fm["created"] = group.new_created
+
+    # Aliases = union of all members' existing aliases + every member's old slug
+    aliases: list[str] = []
+    for m in group.members:
+        existing_fm, _ = read_frontmatter(m.path)
+        for a in existing_fm.get("aliases") or []:
+            if a not in aliases:
+                aliases.append(a)
+        if m.slug not in aliases:
+            aliases.append(m.slug)
+    # Don't list the canonical slug in its own aliases.
+    aliases = [a for a in aliases if a != group.new_slug]
+    stub_fm["aliases"] = aliases
+
+    # Build the body: stub preamble + Merged from section
+    merged_section_lines = ["", "## Merged from", ""]
+    for m in group.members:
+        merged_section_lines.append(f"### `{m.slug}` — {m.name}")
+        merged_section_lines.append("")
+        merged_section_lines.append(m.body.rstrip())
+        merged_section_lines.append("")
+    final_body = stub_body + "\n".join(merged_section_lines) + "\n"
+
+    # Delete every source page (except the canonical-slug one — we're rewriting it)
+    for m in group.members:
+        if m.path == canon_path:
+            continue  # will be overwritten by write_frontmatter below
+        try:
+            subprocess.run(["git", "rm", "-q", str(m.path)],
+                           cwd=wiki_root, check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            m.path.unlink(missing_ok=True)
+
+    canon_path.parent.mkdir(parents=True, exist_ok=True)
+    write_frontmatter(canon_path, stub_fm, final_body)
+
+
 def _run_apply(wiki_root: Path) -> int:
     today = _today()
     plan, rewrites, report = _build_report(wiki_root, today)
@@ -81,9 +156,9 @@ def _run_apply(wiki_root: Path) -> int:
 
     for g in plan.groups:
         if g.is_merge:
-            # Task 12 implements merges
-            continue
-        _apply_rename(wiki_root, g, today)
+            _apply_merge(wiki_root, g, today)
+        else:
+            _apply_rename(wiki_root, g, today)
     # Task 13 adds paper-page rewrites; Task 14 adds preconditions/snapshot/commit
     return 0
 

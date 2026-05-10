@@ -113,3 +113,56 @@ def test_apply_single_page_rename(tmp_git_wiki):
     assert "2022-56th-asilomar-conference-on-signals-systems-and-computers" in fm.get("aliases", [])
     # Body of original page preserved
     assert "Body of 2022-56th-asilomar" in body
+
+
+def test_apply_multi_page_merge(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers",
+           papers=["pA", "pB"])
+    _venue(tmp_git_wiki, "2023-57th-asilomar-conference-on-signals-systems-and-computers",
+           "2023 57th Asilomar Conference on Signals, Systems, and Computers",
+           papers=["pC"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venues"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    canon = tmp_git_wiki / "wiki/venues/asilomar-conference-on-signals-systems-and-computers.md"
+    assert canon.exists()
+    assert not (tmp_git_wiki / "wiki/venues/2022-56th-asilomar-conference-on-signals-systems-and-computers.md").exists()
+    assert not (tmp_git_wiki / "wiki/venues/2023-57th-asilomar-conference-on-signals-systems-and-computers.md").exists()
+
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm, body = read_frontmatter(canon)
+    assert fm["slug"] == "asilomar-conference-on-signals-systems-and-computers"
+    assert fm["name"] == "Asilomar Conference on Signals, Systems, and Computers"
+    assert sorted(fm["papers"]) == ["pA", "pB", "pC"]
+    # Both old slugs are aliases
+    assert "2022-56th-asilomar-conference-on-signals-systems-and-computers" in fm["aliases"]
+    assert "2023-57th-asilomar-conference-on-signals-systems-and-computers" in fm["aliases"]
+    # Both source bodies archived
+    assert "## Merged from" in body
+    assert "Body of 2022-56th-asilomar" in body
+    assert "Body of 2023-57th-asilomar" in body
+
+
+def test_apply_merge_with_existing_canonical_preserves_body(tmp_git_wiki):
+    """Pre-existing canonical page's body is preserved in 'Merged from'."""
+    _venue(tmp_git_wiki, "asilomar-conference-on-signals-systems-and-computers",
+           "Asilomar Conference on Signals, Systems, and Computers", papers=["pX"])
+    _venue(tmp_git_wiki, "2024-58th-asilomar-conference-on-signals-systems-and-computers",
+           "2024 58th Asilomar Conference on Signals, Systems, and Computers", papers=["pY"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venues"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    canon = tmp_git_wiki / "wiki/venues/asilomar-conference-on-signals-systems-and-computers.md"
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm, body = read_frontmatter(canon)
+    # Both bodies preserved (the canonical page's prior body and the new member's body)
+    assert "Body of asilomar-conference" in body
+    assert "Body of 2024-58th-asilomar" in body
+    assert sorted(fm["papers"]) == ["pX", "pY"]
