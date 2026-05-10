@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import errno
 import os
+import sys
 import warnings
 from datetime import datetime, timezone
 
@@ -15,18 +16,52 @@ class StaleLockRecovered(UserWarning):
     """Warned when an existing lock was stale (holder pid is gone) and got recovered."""
 
 
-def _is_alive(pid: int) -> bool:
-    """Return True if pid is a live process on this system."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Exists but we don't own it; treat as alive.
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    _kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _STILL_ACTIVE = 259
+    _ERROR_ACCESS_DENIED = 5
+
+    def _is_alive(pid: int) -> bool:
+        """Return True if pid is a live process on this Windows system."""
+        if pid <= 0:
+            return False
+        handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            err = ctypes.get_last_error()
+            if err == _ERROR_ACCESS_DENIED:
+                return True  # exists but we can't query — treat as alive
+            return False  # invalid PID / not found
+        try:
+            exit_code = wintypes.DWORD()
+            if not _kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == _STILL_ACTIVE
+        finally:
+            _kernel32.CloseHandle(handle)
+else:
+    def _is_alive(pid: int) -> bool:
+        """Return True if pid is a live process on this POSIX system."""
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Exists but we don't own it; treat as alive.
+            return True
         return True
-    return True
 
 
 def _parse_lock_content(content: str) -> tuple[int | None, str, str]:

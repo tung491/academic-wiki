@@ -114,3 +114,26 @@ def test_acquire_is_atomic_on_exclusive_create(tmp_path):
     # Error message should contain the op and pid of the holder
     assert "compile" in str(exc_info.value)
     assert str(os.getpid()) in str(exc_info.value)
+
+
+import os
+
+from academic_wiki_lib.lockfile import _is_alive
+
+
+def test_is_alive_returns_true_for_self_pid():
+    """The current process is always alive."""
+    assert _is_alive(os.getpid()) is True
+
+
+def test_is_alive_returns_false_for_obviously_dead_pid():
+    """PID 99999999 is well past typical PID ranges on Linux/macOS/Windows
+    and should consistently report as not alive on all three."""
+    assert _is_alive(99999999) is False
+
+
+def test_is_alive_returns_false_for_zero_and_negative():
+    """Defensive: malformed lock content can yield 0 or negative pids."""
+    assert _is_alive(0) is False
+    assert _is_alive(-1) is False
+    assert _is_alive(-99999) is False
