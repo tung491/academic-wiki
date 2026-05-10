@@ -60,9 +60,10 @@ class Group:
 
 @dataclass
 class Plan:
-    """Migration plan. groups excludes no-op groups."""
+    """Migration plan. groups excludes no-op groups; no_ops counts them."""
     groups: list[Group] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    no_ops: int = 0
 
 
 @dataclass
@@ -154,6 +155,7 @@ def compute_plan(wiki_root: str | os.PathLike) -> Plan:
         grouped.setdefault(new_slug, []).append((page, canonical))
 
     groups: list[Group] = []
+    no_ops = 0
     for new_slug, entries in sorted(grouped.items()):
         members = [e[0] for e in entries]
         # Pick the longest canonical_name as the representative human form (in
@@ -162,6 +164,7 @@ def compute_plan(wiki_root: str | os.PathLike) -> Plan:
         new_canonical_name = max((e[1] for e in entries), key=len)
         # No-op detection: single member whose existing slug already equals new_slug.
         if len(members) == 1 and members[0].slug == new_slug:
+            no_ops += 1
             continue
         all_papers = sorted({p for m in members for p in m.papers})
         all_tags = sorted({t for m in members for t in m.tags})
@@ -175,25 +178,36 @@ def compute_plan(wiki_root: str | os.PathLike) -> Plan:
             new_tags=all_tags,
         ))
 
-    return Plan(groups=groups, skipped=skipped)
+    return Plan(groups=groups, skipped=skipped, no_ops=no_ops)
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    """Pick the form matching n (e.g. _plural(1, 'paper', 'papers') == 'paper')."""
+    return singular if n == 1 else plural
 
 
 def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
     """Render the dry-run / apply report as markdown."""
     renames = [g for g in plan.groups if not g.is_merge]
     merges = [g for g in plan.groups if g.is_merge]
-    n_rewrites = len(rewrites)
+    pages_in_plan = sum(len(g.members) for g in plan.groups)
+    total_considered = pages_in_plan + len(plan.skipped) + plan.no_ops
 
     lines: list[str] = []
     lines.append(f"# Venue Migration Plan — {today}\n")
     lines.append("## Summary")
-    lines.append(f"- {len(plan.groups) + len(plan.skipped)} venue pages considered "
-                 f"({len(plan.skipped)} skipped, {len(plan.groups)} in plan)")
+    lines.append(
+        f"- {total_considered} venue pages considered "
+        f"({plan.no_ops} no-op, {pages_in_plan} in plan, {len(plan.skipped)} skipped)"
+    )
     lines.append(f"- {len(renames)} renamed (single-page groups)")
     if merges:
         merged_in = sum(len(g.members) for g in merges)
-        lines.append(f"- {merged_in} pages merge into {len(merges)} canonical pages")
-    lines.append(f"- {n_rewrites} paper pages need `venue:` and `venue/*` tag rewrites")
+        lines.append(
+            f"- {merged_in} pages merge into {len(merges)} canonical "
+            f"{_plural(len(merges), 'page', 'pages')}"
+        )
+    lines.append(f"- {len(rewrites)} paper pages need `venue:` and `venue/*` tag rewrites")
     lines.append("")
 
     if renames:
@@ -209,9 +223,19 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
             lines.append(f"### `{g.new_slug}` ← merges {len(g.members)} pages")
             lines.append("Sources:")
             for m in g.members:
-                lines.append(f"- `{m.slug}` ({len(m.papers)} papers)")
-            lines.append(f"New `papers:` list (union, deduped, {len(g.new_papers)} entries): {g.new_papers}")
-            lines.append(f"New `tags:` list (union, {len(g.new_tags)} entries): {g.new_tags}")
+                lines.append(
+                    f"- `{m.slug}` ({len(m.papers)} {_plural(len(m.papers), 'paper', 'papers')})"
+                )
+            lines.append(
+                f"New `papers:` list (union, deduped, {len(g.new_papers)} "
+                f"{_plural(len(g.new_papers), 'entry', 'entries')}): "
+                f"{', '.join('`' + p + '`' for p in g.new_papers) if g.new_papers else '_none_'}"
+            )
+            lines.append(
+                f"New `tags:` list (union, {len(g.new_tags)} "
+                f"{_plural(len(g.new_tags), 'entry', 'entries')}): "
+                f"{', '.join('`' + t + '`' for t in g.new_tags) if g.new_tags else '_none_'}"
+            )
             lines.append(f"New `name:` \"{g.new_canonical_name}\"")
             lines.append(f"New `venue-type:` {g.new_venue_type}")
             lines.append(f"New `created:` {g.new_created}")

@@ -261,8 +261,12 @@ def test_render_report_summary_counts(tmp_wiki):
     assert "merges 2 pages" in report
     # AINA rename appears (single page)
     assert "→ `aina`" in report
-    # The IEEE Transactions venue is a no-op so does not appear
-    assert "IEEE Transactions" not in report or "Transactions on Communications" not in report.split("## Skipped")[0]
+    # All four venues are counted (1 no-op, 2 in merge group, 1 rename = 3 in plan + 1 no-op)
+    assert "4 venue pages considered" in report
+    assert "1 no-op" in report
+    # The no-op venue does not appear in the body before the Skipped section
+    body_before_skipped = report.split("## Skipped")[0]
+    assert "ieee-transactions-on-communications" not in body_before_skipped
 
 
 def test_render_report_skipped_section(tmp_wiki):
