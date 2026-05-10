@@ -182,10 +182,65 @@ def _apply_paper_rewrites(rewrites: list[PaperRewrite], today: str) -> None:
         write_frontmatter(r.path, fm, body)
 
 
+def _git(cwd: Path, *args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "-C", str(cwd), *args],
+        capture_output=capture, text=True, check=check,
+    )
+
+
+def _is_dirty(wiki_root: Path) -> bool:
+    out = _git(wiki_root, "status", "--porcelain", check=False).stdout
+    # Exclude the advisory lock file — it is transiently created by the script
+    # itself and should not trigger the dirty-tree guard.
+    lines = [l for l in out.splitlines() if not l.endswith(".lock")]
+    return bool(lines)
+
+
+def _make_snapshot(wiki_root: Path, today: str) -> str:
+    tag = f"snapshot/pre-venue-migration-{today}"
+    # If the tag already exists from a prior aborted run, reuse it (don't fail)
+    existing = _git(wiki_root, "tag", "-l", tag, check=False).stdout.strip()
+    if not existing:
+        _git(wiki_root, "tag", "-a", tag, "-m", f"pre-venue-migration {today}")
+    return tag
+
+
+def _append_log(wiki_root: Path, today: str, summary: str) -> None:
+    log_path = wiki_root / "log.md"
+    entry = f"\n## [{today}] migrate-venues | {summary}\n"
+    if log_path.exists():
+        log_path.write_text(log_path.read_text() + entry)
+    else:
+        log_path.write_text(f"# Log\n{entry}")
+
+
+def _commit_all(wiki_root: Path, summary: str) -> None:
+    _git(wiki_root, "add", "-A")
+    _git(wiki_root, "commit", "-m", f"migrate: venue normalization ({summary})")
+
+
 def _run_apply(wiki_root: Path) -> int:
+    if _is_dirty(wiki_root):
+        print("ERROR: working tree is dirty (uncommitted changes); commit or stash first",
+              file=sys.stderr)
+        return 5
+
     today = _today()
     plan, rewrites, report = _build_report(wiki_root, today)
     _write_report(wiki_root, today, report)
+    if plan.skipped:
+        print("ERROR: refusing to apply — some venue pages could not be normalized:",
+              file=sys.stderr)
+        for s in plan.skipped:
+            print(f"  - {s}", file=sys.stderr)
+        print("Fix these pages and re-run, or remove them from the wiki.", file=sys.stderr)
+        return 6
+    _make_snapshot(wiki_root, today)
+
+    n_renames = sum(1 for g in plan.groups if not g.is_merge)
+    n_merge_in = sum(len(g.members) for g in plan.groups if g.is_merge)
+    n_merge_out = sum(1 for g in plan.groups if g.is_merge)
 
     for g in plan.groups:
         if g.is_merge:
@@ -194,7 +249,10 @@ def _run_apply(wiki_root: Path) -> int:
             _apply_rename(wiki_root, g, today)
 
     _apply_paper_rewrites(rewrites, today)
-    # Task 14 adds preconditions/snapshot/commit
+
+    summary = f"{n_merge_in}→{n_merge_out} merges, {n_renames} renames, {len(rewrites)} paper rewrites"
+    _append_log(wiki_root, today, summary)
+    _commit_all(wiki_root, summary)
     return 0
 
 

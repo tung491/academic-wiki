@@ -273,3 +273,68 @@ def test_apply_rewrites_paper_with_no_venue_tag(tmp_git_wiki):
 def _today_iso():
     from datetime import date
     return date.today().isoformat()
+
+
+def test_apply_refuses_dirty_tree(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    # Don't commit — leave the tree dirty
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode != 0
+    assert "dirty" in (result.stderr + result.stdout).lower() or "uncommitted" in (result.stderr + result.stdout).lower()
+    # The lock should have been released
+    assert not (tmp_git_wiki / ".lock").exists()
+
+
+def test_apply_aborts_on_skipped_pages(tmp_git_wiki):
+    """If any venue page has unparseable frontmatter, --apply aborts."""
+    bad = tmp_git_wiki / "wiki/venues/broken.md"
+    bad.write_text("---\nbroken: [\n---\nx\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "broken"], cwd=tmp_git_wiki, check=True)
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode != 0
+    assert "skipped" in (result.stderr + result.stdout).lower() or "could not" in (result.stderr + result.stdout).lower()
+    # No snapshot tag should have been created
+    tags = subprocess.run(["git", "tag", "-l"], cwd=tmp_git_wiki,
+                          capture_output=True, text=True).stdout.split()
+    assert not any(t.startswith("snapshot/pre-venue-migration-") for t in tags)
+
+
+def test_apply_creates_snapshot_tag(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venue"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+    tags = subprocess.run(["git", "tag", "-l"], cwd=tmp_git_wiki,
+                          capture_output=True, text=True).stdout.split()
+    assert any(t.startswith("snapshot/pre-venue-migration-") for t in tags)
+
+
+def test_apply_writes_log_and_single_commit(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venue"], cwd=tmp_git_wiki, check=True)
+    head_before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
+                                 capture_output=True, text=True).stdout.strip()
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    head_after = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
+                                capture_output=True, text=True).stdout.strip()
+    assert head_after != head_before
+    # Exactly one commit was added
+    rev_list = subprocess.run(["git", "rev-list", f"{head_before}..HEAD"],
+                              cwd=tmp_git_wiki, capture_output=True, text=True).stdout.split()
+    assert len(rev_list) == 1
+    msg = subprocess.run(["git", "log", "-1", "--pretty=%B"], cwd=tmp_git_wiki,
+                         capture_output=True, text=True).stdout
+    assert "migrate" in msg and "venue normalization" in msg
+    # log.md got an entry
+    log = (tmp_git_wiki / "log.md").read_text()
+    assert "migrate-venues" in log
