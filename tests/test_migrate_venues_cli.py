@@ -213,6 +213,63 @@ def test_apply_rewrites_paper_pages(tmp_git_wiki):
     assert fm_u["venue"] == "ieee-transactions-on-communications"
 
 
+def test_apply_rewrites_paper_with_both_old_and_new_venue_tags(tmp_git_wiki):
+    """A partially-migrated paper (already has venue/new tag too) is deduped."""
+    old_slug = "2022-56th-asilomar-conference-on-signals-systems-and-computers"
+    new_slug = "asilomar-conference-on-signals-systems-and-computers"
+    _venue(tmp_git_wiki, old_slug,
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers",
+           papers=["pPartial"])
+    fm = {
+        "paper-id": "pPartial", "type": "paper", "status": "read",
+        "created": "2024-01-01", "updated": "2024-01-01",
+        "title": "T", "authors": [], "year": 2024,
+        "venue": old_slug, "identifiers": {}, "aliases": [],
+        "bib-file": "x", "extract": "x", "references-raw": [], "cites": [],
+        "tags": [f"venue/{old_slug}", f"venue/{new_slug}", "field/x"],
+    }
+    write_frontmatter(str(tmp_git_wiki / "wiki/papers/pPartial.md"), fm, "Body.\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm_p, _ = read_frontmatter(tmp_git_wiki / "wiki/papers/pPartial.md")
+    assert fm_p["tags"].count(f"venue/{new_slug}") == 1, "venue/new should appear exactly once"
+    assert f"venue/{old_slug}" not in fm_p["tags"]
+    assert "field/x" in fm_p["tags"]
+
+
+def test_apply_rewrites_paper_with_no_venue_tag(tmp_git_wiki):
+    """A paper with venue: but no venue/* tag still gets the new venue/* tag appended."""
+    old_slug = "2022-56th-asilomar-conference-on-signals-systems-and-computers"
+    new_slug = "asilomar-conference-on-signals-systems-and-computers"
+    _venue(tmp_git_wiki, old_slug,
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers",
+           papers=["pNoTag"])
+    fm = {
+        "paper-id": "pNoTag", "type": "paper", "status": "read",
+        "created": "2024-01-01", "updated": "2024-01-01",
+        "title": "T", "authors": [], "year": 2024,
+        "venue": old_slug, "identifiers": {}, "aliases": [],
+        "bib-file": "x", "extract": "x", "references-raw": [], "cites": [],
+        "tags": ["field/x"],  # no venue/* tag at all
+    }
+    write_frontmatter(str(tmp_git_wiki / "wiki/papers/pNoTag.md"), fm, "Body.\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm_p, _ = read_frontmatter(tmp_git_wiki / "wiki/papers/pNoTag.md")
+    assert f"venue/{new_slug}" in fm_p["tags"]
+    assert "field/x" in fm_p["tags"]
+
+
 def _today_iso():
     from datetime import date
     return date.today().isoformat()

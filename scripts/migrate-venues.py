@@ -63,7 +63,7 @@ def _apply_rename(wiki_root: Path, group: Group, today: str) -> None:
     fm, body = read_frontmatter(page.path)
     fm["slug"] = group.new_slug
     fm["name"] = group.new_canonical_name
-    fm["updated"] = today
+    fm["updated"] = datetime.date.fromisoformat(today)
     aliases = list(fm.get("aliases") or [])
     if page.slug not in aliases:
         aliases.append(page.slug)
@@ -159,14 +159,18 @@ def _apply_merge(wiki_root: Path, group: Group, today: str) -> None:
 
 
 def _apply_paper_rewrites(rewrites: list[PaperRewrite], today: str) -> None:
+    today_date = datetime.date.fromisoformat(today)
     for r in rewrites:
         fm, body = read_frontmatter(r.path)
         fm["venue"] = r.new_slug
-        new_tags = []
+        new_tags: list[str] = []
         old_tag = f"venue/{r.old_slug}"
         new_tag = f"venue/{r.new_slug}"
+        # Both old_tag and new_tag collapse to a single new_tag (dedup against
+        # partially-migrated papers that already have both); other tags pass
+        # through preserving order.
         for t in fm.get("tags") or []:
-            if t == old_tag:
+            if t in (old_tag, new_tag):
                 if new_tag not in new_tags:
                     new_tags.append(new_tag)
             else:
@@ -174,7 +178,7 @@ def _apply_paper_rewrites(rewrites: list[PaperRewrite], today: str) -> None:
         if new_tag not in new_tags:
             new_tags.append(new_tag)
         fm["tags"] = new_tags
-        fm["updated"] = today
+        fm["updated"] = today_date
         write_frontmatter(r.path, fm, body)
 
 
