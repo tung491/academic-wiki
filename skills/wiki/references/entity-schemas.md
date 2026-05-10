@@ -159,6 +159,8 @@ tags: [field/..., person]
 
 **venue** — `wiki/venues/<slug>.md`
 
+The `slug:` is produced by `academic_wiki_lib.venue_normalize.normalize_venue(<raw-venue>)`, which strips year and ordinal so editions of the same conference series collapse to one page. The `name:` is the canonical (year/ordinal-stripped) human-readable form returned by the same function.
+
 ```yaml
 ---
 type: venue

@@ -22,14 +22,15 @@ For each paper-id to compile:
 3. Determine paper `status:` — `read` if user notes present and non-trivial (>200 chars), else `skimmed`. LLM may override based on content depth.
 
 4. Write (or update) `wiki/papers/<paper-id>.md` with:
-    - Full frontmatter per §3.1: `paper-id`, `type: paper`, `status`, `created` (today if new), `updated` (today), `publication-date` (if known), `title`, `authors` (list of `{slug, name}` objects), `year`, `venue` (**slug** form via `academic_wiki_lib.slug.make_slug(<raw-venue>)`), `identifiers`, `aliases: []`, `source-version`, `bib-file`, `extract`, `notes` (only if `raw/notes/<paper-id>.md` exists), `figures` (only if `raw/figures/<paper-id>/` is non-empty), `references-raw` (list of raw bibliography strings), `cites: []` (empty in `--paper-only` mode; resolved in full mode), `tags`.
+    - Full frontmatter per §3.1: `paper-id`, `type: paper`, `status`, `created` (today if new), `updated` (today), `publication-date` (if known), `title`, `authors` (list of `{slug, name}` objects), `year`, `venue` (**slug** form via `academic_wiki_lib.venue_normalize.normalize_venue(<raw-venue>)[1]`), `identifiers`, `aliases: []`, `source-version`, `bib-file`, `extract`, `notes` (only if `raw/notes/<paper-id>.md` exists), `figures` (only if `raw/figures/<paper-id>/` is non-empty), `references-raw` (list of raw bibliography strings), `cites: []` (empty in `--paper-only` mode; resolved in full mode), `tags`.
     - Tags MUST include `year/<YYYY>` (derived from the extract frontmatter's `year:` or `date:` field) and `venue/<slug>` (when the extract has a `venue:` field — if missing, only the `year/*` tag is added). These are deterministic — they do not depend on LLM inference. LLM-inferred tags (`field/*`, `subfield/*`, `method/*`) are added on top.
     - Body sections: `## Metadata` (inline one-liner), `## Summary`, `## Key Contributions`, `## Methods`, `## Results`, `## Claims`, `## User Notes`, `## See Also`.
 
 4b. **Venue page upsert** (runs after step 4, before step 5) — after writing the paper page, ensure `wiki/venues/<venue-slug>.md` exists and includes this paper:
     - If the extract has no `venue:` field (missing or empty/whitespace), skip this step.
-    - Compute `venue-type` via `academic_wiki_lib.templates.guess_venue_type(<raw-venue>)`.
-    - New: render with `academic_wiki_lib.templates.venue_md_stub(slug=<venue-slug>, name=<raw-venue>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<today>)` and write the result to disk.
+    - Compute `(canonical_name, slug)` via `academic_wiki_lib.venue_normalize.normalize_venue(<raw-venue>)`. The slug strips year/ordinal so editions collapse to one venue page.
+    - Compute `venue-type` via `academic_wiki_lib.templates.guess_venue_type(<canonical_name>)`.
+    - New: render with `academic_wiki_lib.templates.venue_md_stub(slug=<slug>, name=<canonical_name>, venue_type=<venue-type>, paper_ids=[<paper-id>], field_tags=<paper's field/* tags>, today=<today>)` and write the result to disk.
     - Existing: read with `academic_wiki_lib.frontmatter.read_frontmatter`, append `<paper-id>` to `papers:` (dedup, preserve order), union `field/*` into `tags:` (dedup, preserve order), bump `updated:`. Preserve `created:`, `name:`, `venue-type:`, `slug:` (the user may have corrected them). Write back with `academic_wiki_lib.frontmatter.write_frontmatter`.
     - Runs in ALL modes (default AND `--paper-only`) — venue pages are cheap and belong with the paper write.
 

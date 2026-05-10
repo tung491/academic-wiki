@@ -128,14 +128,16 @@ Attempt to read `{{WIKI_ROOT}}/raw/notes/<paper-id>.md`.
    - Collapse consecutive hyphens; strip leading/trailing hyphens
    - Truncate at 60 chars at a word boundary
 
-**`venue` slug:** If a venue string is present in the extract, convert it to slug form:
-- Lowercase the full venue name
-- Replace any run of non-alphanumeric characters (except existing hyphens) with a single hyphen
-- Collapse consecutive hyphens; strip leading/trailing hyphens
-- Truncate at 60 chars at a word boundary
-- Drop leading `a`/`an`/`the`/`on`/`of`/`for`/`with` if the result is still ≥2 words
+**`venue` slug:** If a venue string is present in the extract, call `academic_wiki_lib.venue_normalize.normalize_venue(<raw-venue>)` to get `(canonical_name, slug)`. Use both:
+- `slug` for the `venue:` frontmatter, the `venue/<slug>` tag, and the venue page's path `wiki/venues/<slug>.md`.
+- `canonical_name` for the venue page's `name:` frontmatter and the `# <heading>` line of the venue page body.
 
-Examples: `"Neural Information Processing Systems"` → `neurips` (known abbreviation; use judgment for well-known venues), `"IEEE Transactions on Communications"` → `ieee-transactions-on-communications`
+The function strips year (1900–2099) and ordinal prefixes (`1st`, `2nd`, ..., `99th`) from the raw string so different editions of the same conference series produce the same slug.
+
+Examples:
+- `"2022 56th Asilomar Conference on Signals, Systems, and Computers"` → canonical `Asilomar Conference on Signals, Systems, and Computers`, slug `asilomar-conference-on-signals-systems-and-computers`.
+- `"19th International Conference on Advanced Information Networking and Applications (AINA 2005)"` → canonical `International Conference on Advanced Information Networking and Applications AINA`, slug `international-conference-on-advanced-information-networking-and-applications-aina`.
+- `"IEEE Transactions on Communications"` → canonical and slug unchanged (already canonical).
 
 **`tags`:** Always include:
 - `paper` (literal tag marking this as a paper page)
@@ -318,7 +320,7 @@ Write a new file with this content:
 ```markdown
 ---
 type: venue
-name: "<raw venue name from extract>"
+name: "<canonical_name>"
 slug: <venue-slug>
 venue-type: <conference | journal | workshop | preprint-server>
 created: {{TODAY}}
@@ -328,7 +330,7 @@ papers:
 tags:
   - <field/* tags from this paper page, if any>
 ---
-# <raw venue name from extract>
+# <canonical_name>
 
 [[<venue-slug>]] papers in this wiki: 1
 ```
