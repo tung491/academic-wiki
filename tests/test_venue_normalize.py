@@ -50,6 +50,9 @@ def test_year_boundaries():
     # 1899 and 2100 are outside the 1900-2099 window — kept verbatim.
     assert normalize_venue("GLOBECOM 1899")[1] == "globecom-1899"
     assert normalize_venue("ICASSP 2100")[1] == "icassp-2100"
+    # 1900 and 2099 are inclusive lower/upper bounds — stripped.
+    assert normalize_venue("CONF 1900")[1] == "conf"
+    assert normalize_venue("CONF 2099")[1] == "conf"
 
 
 def test_non_year_digits_preserved():
@@ -66,9 +69,13 @@ def test_year_glued_to_token():
 
 
 def test_ordinal_anywhere():
-    # Ordinals strip even when not at the start; remaining text becomes the slug.
+    # Ordinals strip even when not at the start; remaining text drives the slug.
     assert normalize_venue("21st Century Networking")[1] == "century-networking"
     assert normalize_venue("Section 1st on Optics")[1] == "section-on-optics"
+    # Ordinal embedded in a hyphenated token: "3rd-party" → "-party".
+    assert normalize_venue("3rd-party tool")[1] == "party-tool"
+    # Sole non-ordinal word survives.
+    assert normalize_venue("Section 1st")[1] == "section"
 
 
 def test_paren_and_bracket_unwrap():
