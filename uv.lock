@@ -24,27 +24,21 @@ mcp = [
     { name = "selenium-stealth" },
     { name = "undetected-chromedriver" },
 ]
-s2-mcp = [
-    { name = "fastmcp" },
-    { name = "requests" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.1.1" },
-    { name = "fastmcp", marker = "extra == 's2-mcp'", specifier = ">=3.1.1" },
     { name = "playwright", marker = "extra == 'mcp'", specifier = ">=1.40" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", marker = "extra == 'mcp'", specifier = ">=2.31" },
-    { name = "requests", marker = "extra == 's2-mcp'", specifier = ">=2.31" },
     { name = "selenium", marker = "extra == 'mcp'", specifier = ">=4.41.0" },
     { name = "selenium-stealth", marker = "extra == 'mcp'", specifier = ">=1.0.6" },
     { name = "undetected-chromedriver", marker = "extra == 'mcp'", specifier = ">=3.5.5" },
 ]
-provides-extras = ["dev", "mcp", "s2-mcp"]
+provides-extras = ["dev", "mcp"]
 
 [[package]]
 name = "aiofile"
