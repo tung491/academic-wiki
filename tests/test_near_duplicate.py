@@ -26,12 +26,13 @@ def test_distinct_conferences_not_flagged():
 
 def test_acronym_suffix_reinforcement():
     # Two slugs that share trailing acronym `iccc` and have similarity
-    # below 0.92 but ≥ 0.80 should be flagged.
+    # below 0.92 but ≥ 0.80 should be flagged. Pin the threshold so this
+    # test stays diagnostic even if the default is retuned later.
     slugs = [
         "international-conference-on-communications-in-china-iccc",
         "ieee-international-conf-communications-china-iccc",
     ]
-    pairs = near_duplicate_pairs(slugs)
+    pairs = near_duplicate_pairs(slugs, acronym_threshold=0.80)
     assert len(pairs) == 1
     a, b, _ = pairs[0]
     assert a < b

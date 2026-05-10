@@ -394,7 +394,7 @@ def test_distinct_conferences_not_flagged():
 
 def test_acronym_suffix_reinforcement():
     # Two slugs that share trailing acronym `iccc` and have similarity
-    # below 0.92 but ≥ 0.85 should be flagged.
+    # below 0.92 but ≥ 0.80 should be flagged.
     slugs = [
         "international-conference-on-communications-in-china-iccc",
         "ieee-international-conf-communications-china-iccc",
@@ -448,7 +448,7 @@ def _slug_token_string(slug: str) -> str:
 def near_duplicate_pairs(
     slugs: Iterable[str],
     threshold: float = 0.92,
-    acronym_threshold: float = 0.85,
+    acronym_threshold: float = 0.80,
 ) -> list[tuple[str, str, float]]:
     """Pairwise near-duplicate detection over venue slugs.
 
@@ -457,7 +457,7 @@ def near_duplicate_pairs(
 
     A pair is flagged when EITHER:
       - similarity >= threshold (default 0.92), OR
-      - similarity >= acronym_threshold (default 0.85) AND the slugs share
+      - similarity >= acronym_threshold (default 0.80) AND the slugs share
         the same trailing hyphen-token (matching acronym suffix).
 
     Similarity is difflib.SequenceMatcher().ratio() over the space-joined
@@ -497,7 +497,7 @@ git commit -m "$(cat <<'EOF'
 feat(venue-normalize): near_duplicate_pairs for variant-spelling detection
 
 difflib.SequenceMatcher over space-joined tokens, threshold 0.92.
-Acronym-suffix reinforcement at 0.85 catches matching trailing
+Acronym-suffix reinforcement at 0.80 catches matching trailing
 acronym pairs that fall just below the main threshold. Lex-sorted
 output, no duplicate (a, b) / (b, a) pairs.
 
@@ -712,7 +712,7 @@ feat(lint): VENUE_NEAR_DUPLICATE check
 
 Surfaces variant-spelling venue pairs (ieee-cic vs ieeecic) that
 the deterministic normalize_venue rules can't auto-merge.
-Threshold 0.92 with acronym-suffix reinforcement at 0.85.
+Threshold 0.92 with acronym-suffix reinforcement at 0.80.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
