@@ -7,10 +7,13 @@ report or applies the consolidation (renames + merges + paper-page rewrites).
 from __future__ import annotations
 
 import argparse
+import datetime
 import subprocess  # used by _run_apply (Tasks 11-14)
 import sys
 from datetime import date
 from pathlib import Path
+
+import yaml
 
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
@@ -76,8 +79,11 @@ def _apply_rename(wiki_root: Path, group: Group, today: str) -> None:
 
 
 def _split_stub(stub: str) -> tuple[dict, str]:
-    """Parse a venue_md_stub() string into (fm dict, body)."""
-    import yaml
+    """Parse a venue_md_stub() string into (fm dict, body).
+
+    Only intended for use with venue_md_stub() output — not a general
+    YAML+markdown parser.
+    """
     if not stub.startswith("---\n"):
         return {}, stub
     rest = stub[4:]
@@ -110,8 +116,11 @@ def _apply_merge(wiki_root: Path, group: Group, today: str) -> None:
         today=today,
     )
     stub_fm, stub_body = _split_stub(stub)
+    # Keep `created` as datetime.date so YAML serializes it the same way as
+    # `updated` (both unquoted ISO dates) — venue_md_stub stores the today
+    # value as datetime.date, so coerce the override to match.
     if group.new_created:
-        stub_fm["created"] = group.new_created
+        stub_fm["created"] = datetime.date.fromisoformat(group.new_created)
 
     # Aliases = union of all members' existing aliases + every member's old slug
     aliases: list[str] = []

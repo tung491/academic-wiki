@@ -166,3 +166,6 @@ def test_apply_merge_with_existing_canonical_preserves_body(tmp_git_wiki):
     assert "Body of asilomar-conference" in body
     assert "Body of 2024-58th-asilomar" in body
     assert sorted(fm["papers"]) == ["pX", "pY"]
+    # Non-canonical member is recorded as an alias; canonical slug is not in its own aliases.
+    assert "2024-58th-asilomar-conference-on-signals-systems-and-computers" in fm["aliases"]
+    assert "asilomar-conference-on-signals-systems-and-computers" not in fm.get("aliases", [])
