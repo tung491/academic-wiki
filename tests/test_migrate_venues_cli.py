@@ -169,3 +169,50 @@ def test_apply_merge_with_existing_canonical_preserves_body(tmp_git_wiki):
     # Non-canonical member is recorded as an alias; canonical slug is not in its own aliases.
     assert "2024-58th-asilomar-conference-on-signals-systems-and-computers" in fm["aliases"]
     assert "asilomar-conference-on-signals-systems-and-computers" not in fm.get("aliases", [])
+
+
+def _paper(wiki, paper_id, venue_slug, extra_tags=()):
+    fm = {
+        "paper-id": paper_id, "type": "paper", "status": "read",
+        "created": "2024-01-01", "updated": "2024-01-01",
+        "title": "T", "authors": [], "year": 2024,
+        "venue": venue_slug, "identifiers": {}, "aliases": [],
+        "bib-file": "x", "extract": "x", "references-raw": [], "cites": [],
+        "tags": [f"venue/{venue_slug}", *extra_tags],
+    }
+    write_frontmatter(str(wiki / "wiki/papers" / f"{paper_id}.md"), fm, "Body.\n")
+
+
+def test_apply_rewrites_paper_pages(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    _paper(tmp_git_wiki, "pA",
+           "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           extra_tags=["field/wireless-comms"])
+    _paper(tmp_git_wiki, "pUnaffected", "ieee-transactions-on-communications")
+    # Need the unaffected venue too for lint cleanliness, though migration doesn't require it
+    _venue(tmp_git_wiki, "ieee-transactions-on-communications",
+           "IEEE Transactions on Communications", papers=["pUnaffected"])
+
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm_a, _ = read_frontmatter(tmp_git_wiki / "wiki/papers/pA.md")
+    assert fm_a["venue"] == "asilomar-conference-on-signals-systems-and-computers"
+    assert "venue/asilomar-conference-on-signals-systems-and-computers" in fm_a["tags"]
+    assert "venue/2022-56th-asilomar-conference-on-signals-systems-and-computers" not in fm_a["tags"]
+    assert "field/wireless-comms" in fm_a["tags"]  # unrelated tags preserved
+    assert str(fm_a["updated"]) == _today_iso()  # bumped
+
+    # Unaffected paper's venue is unchanged.
+    fm_u, _ = read_frontmatter(tmp_git_wiki / "wiki/papers/pUnaffected.md")
+    assert fm_u["venue"] == "ieee-transactions-on-communications"
+
+
+def _today_iso():
+    from datetime import date
+    return date.today().isoformat()

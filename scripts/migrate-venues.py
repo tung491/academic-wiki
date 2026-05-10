@@ -158,6 +158,26 @@ def _apply_merge(wiki_root: Path, group: Group, today: str) -> None:
     write_frontmatter(canon_path, stub_fm, final_body)
 
 
+def _apply_paper_rewrites(rewrites: list[PaperRewrite], today: str) -> None:
+    for r in rewrites:
+        fm, body = read_frontmatter(r.path)
+        fm["venue"] = r.new_slug
+        new_tags = []
+        old_tag = f"venue/{r.old_slug}"
+        new_tag = f"venue/{r.new_slug}"
+        for t in fm.get("tags") or []:
+            if t == old_tag:
+                if new_tag not in new_tags:
+                    new_tags.append(new_tag)
+            else:
+                new_tags.append(t)
+        if new_tag not in new_tags:
+            new_tags.append(new_tag)
+        fm["tags"] = new_tags
+        fm["updated"] = today
+        write_frontmatter(r.path, fm, body)
+
+
 def _run_apply(wiki_root: Path) -> int:
     today = _today()
     plan, rewrites, report = _build_report(wiki_root, today)
@@ -168,7 +188,9 @@ def _run_apply(wiki_root: Path) -> int:
             _apply_merge(wiki_root, g, today)
         else:
             _apply_rename(wiki_root, g, today)
-    # Task 13 adds paper-page rewrites; Task 14 adds preconditions/snapshot/commit
+
+    _apply_paper_rewrites(rewrites, today)
+    # Task 14 adds preconditions/snapshot/commit
     return 0
 
 
