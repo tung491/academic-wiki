@@ -26,7 +26,7 @@ def test_distinct_conferences_not_flagged():
 
 def test_acronym_suffix_reinforcement():
     # Two slugs that share trailing acronym `iccc` and have similarity
-    # below 0.92 but ≥ 0.85 should be flagged.
+    # below 0.92 but ≥ 0.80 should be flagged.
     slugs = [
         "international-conference-on-communications-in-china-iccc",
         "ieee-international-conf-communications-china-iccc",
