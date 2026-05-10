@@ -52,3 +52,17 @@ class TestAcquireRelease:
         result = _run_cli("acquire", str(tmp_path), "--op", "ingest")
         assert result.returncode == 1
         assert "in progress" in result.stderr.lower() or "held" in result.stderr.lower() or "compile" in result.stderr
+
+
+class TestSourceSha:
+    def test_source_sha_prints_hex_digest(self, tmp_path):
+        target = tmp_path / "input.bin"
+        target.write_bytes(b"hello world")
+        result = _run_cli("source-sha", str(target))
+        assert result.returncode == 0
+        # SHA-256 of "hello world" is b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
+        assert result.stdout.strip() == "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+
+    def test_source_sha_missing_file_exits_nonzero(self, tmp_path):
+        result = _run_cli("source-sha", str(tmp_path / "does-not-exist"))
+        assert result.returncode != 0

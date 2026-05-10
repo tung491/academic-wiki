@@ -28,6 +28,12 @@ def _cmd_release(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_source_sha(args: argparse.Namespace) -> int:
+    from academic_wiki_lib.source_sha import file_sha256
+    print(file_sha256(args.path))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="academic_wiki_lib.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -40,6 +46,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("release", help="Release <wiki-root>/.lock")
     p.add_argument("wiki_root")
     p.set_defaults(func=_cmd_release)
+
+    p = sub.add_parser("source-sha", help="Print SHA-256 of a file")
+    p.add_argument("path")
+    p.set_defaults(func=_cmd_source_sha)
 
     return parser
 
