@@ -8,6 +8,7 @@ from academic_wiki_lib.venue_migrate import (
     PaperRewrite,
     collect_paper_rewrites,
     compute_plan,
+    render_report,
 )
 
 
@@ -231,3 +232,43 @@ def test_collect_paper_rewrites_tag_only_when_venue_field_absent(tmp_wiki):
     assert len(rewrites) == 1
     assert rewrites[0].paper_id == "pA"
     assert rewrites[0].old_slug == "2022-56th-asilomar-conference-on-signals-systems-and-computers"
+
+
+def test_render_report_summary_counts(tmp_wiki):
+    _venue(tmp_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    _venue(tmp_wiki, "2023-57th-asilomar-conference-on-signals-systems-and-computers",
+           "2023 57th Asilomar Conference on Signals, Systems, and Computers", papers=["pB"])
+    _venue(tmp_wiki, "2024-aina", "2024 AINA", papers=["pC"])
+    _venue(tmp_wiki, "ieee-transactions-on-communications",
+           "IEEE Transactions on Communications", papers=["pD"])
+    _paper(tmp_wiki, "pA", "2022-56th-asilomar-conference-on-signals-systems-and-computers")
+    _paper(tmp_wiki, "pB", "2023-57th-asilomar-conference-on-signals-systems-and-computers")
+    _paper(tmp_wiki, "pC", "2024-aina")
+    _paper(tmp_wiki, "pD", "ieee-transactions-on-communications")
+
+    plan = compute_plan(tmp_wiki)
+    rewrites = collect_paper_rewrites(tmp_wiki, plan)
+    report = render_report(plan, rewrites, today="2026-05-10")
+
+    assert "# Venue Migration Plan — 2026-05-10" in report
+    assert "## Summary" in report
+    assert "## Renames (single-page groups)" in report
+    assert "## Merges (multi-page groups)" in report
+    assert "## Paper-page rewrites" in report
+    # Asilomar merge appears
+    assert "asilomar-conference-on-signals-systems-and-computers" in report
+    assert "merges 2 pages" in report
+    # AINA rename appears (single page)
+    assert "→ aina" in report
+    # The IEEE Transactions venue is a no-op so does not appear
+    assert "IEEE Transactions" not in report or "Transactions on Communications" not in report.split("## Skipped")[0]
+
+
+def test_render_report_skipped_section(tmp_wiki):
+    bad = tmp_wiki / "wiki/venues/broken.md"
+    bad.write_text("---\nbroken: [\n---\nx\n")
+    plan = compute_plan(tmp_wiki)
+    report = render_report(plan, [], today="2026-05-10")
+    assert "## Skipped (could not parse frontmatter)" in report
+    assert "broken.md" in report

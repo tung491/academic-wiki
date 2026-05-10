@@ -178,6 +178,61 @@ def compute_plan(wiki_root: str | os.PathLike) -> Plan:
     return Plan(groups=groups, skipped=skipped)
 
 
+def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
+    """Render the dry-run / apply report as markdown."""
+    renames = [g for g in plan.groups if not g.is_merge]
+    merges = [g for g in plan.groups if g.is_merge]
+    n_rewrites = len(rewrites)
+
+    lines: list[str] = []
+    lines.append(f"# Venue Migration Plan — {today}\n")
+    lines.append("## Summary")
+    lines.append(f"- {len(plan.groups) + len(plan.skipped)} venue pages considered "
+                 f"({len(plan.skipped)} skipped, {len(plan.groups)} in plan)")
+    lines.append(f"- {len(renames)} renamed (single-page groups)")
+    if merges:
+        merged_in = sum(len(g.members) for g in merges)
+        lines.append(f"- {merged_in} pages merge into {len(merges)} canonical pages")
+    lines.append(f"- {n_rewrites} paper pages need `venue:` and `venue/*` tag rewrites")
+    lines.append("")
+
+    if renames:
+        lines.append("## Renames (single-page groups)")
+        for g in renames:
+            old = g.members[0].slug
+            lines.append(f"- `{old}` → {g.new_slug}")
+        lines.append("")
+
+    if merges:
+        lines.append("## Merges (multi-page groups)")
+        for g in merges:
+            lines.append(f"### `{g.new_slug}` ← merges {len(g.members)} pages")
+            lines.append("Sources:")
+            for m in g.members:
+                lines.append(f"- `{m.slug}` ({len(m.papers)} papers)")
+            lines.append(f"New `papers:` list (union, deduped, {len(g.new_papers)} entries): {g.new_papers}")
+            lines.append(f"New `tags:` list (union, {len(g.new_tags)} entries): {g.new_tags}")
+            lines.append(f"New `name:` \"{g.new_canonical_name}\"")
+            lines.append(f"New `venue-type:` {g.new_venue_type}")
+            lines.append(f"New `created:` {g.new_created}")
+            lines.append("")
+
+    if rewrites:
+        lines.append("## Paper-page rewrites")
+        for r in rewrites:
+            lines.append(f"- `{r.paper_id}.md`: `venue: {r.old_slug}` → `{r.new_slug}`; "
+                         f"tag `venue/{r.old_slug}` → `venue/{r.new_slug}`")
+        lines.append("")
+
+    if plan.skipped:
+        lines.append("## Skipped (could not parse frontmatter)")
+        for s in plan.skipped:
+            lines.append(f"- {s}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def collect_paper_rewrites(wiki_root: str | os.PathLike, plan: Plan) -> list[PaperRewrite]:
     """Find every paper page whose venue: or venue/* tag references an old
     slug that the plan will replace."""
