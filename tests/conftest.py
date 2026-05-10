@@ -1,4 +1,5 @@
 """Shared pytest fixtures."""
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,19 @@ def tmp_wiki(tmp_path):
     (wiki / "wiki/index.md").write_text("# academic Wiki Index\n")
     (wiki / "log.md").write_text("# academic Wiki Log\n")
     return wiki
+
+
+@pytest.fixture
+def tmp_git_wiki(tmp_wiki):
+    """A tmp_wiki with `git init` and an initial commit so migration tests can
+    create snapshots and commits."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_wiki, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test"], cwd=tmp_wiki, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_wiki, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=tmp_wiki, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_wiki, check=True)
+    return tmp_wiki
 
 
 @pytest.fixture
