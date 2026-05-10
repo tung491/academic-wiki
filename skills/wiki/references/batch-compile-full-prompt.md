@@ -137,7 +137,7 @@ The function strips year (1900–2099) and ordinal prefixes (`1st`, `2nd`, ..., 
 Examples:
 - `"2022 56th Asilomar Conference on Signals, Systems, and Computers"` → canonical `Asilomar Conference on Signals, Systems, and Computers`, slug `asilomar-conference-on-signals-systems-and-computers`.
 - `"19th International Conference on Advanced Information Networking and Applications (AINA 2005)"` → canonical `International Conference on Advanced Information Networking and Applications AINA`, slug `international-conference-on-advanced-information-networking-and-applications-aina`.
-- `"IEEE Transactions on Communications"` → canonical and slug unchanged (already canonical).
+- `"IEEE Transactions on Communications"` → canonical `IEEE Transactions on Communications` (no year/ordinal to strip), slug `ieee-transactions-on-communications` (standard slug transformation: lowercase, spaces → hyphens).
 
 **`tags`:** Always include:
 - `paper` (literal tag marking this as a paper page)
@@ -308,7 +308,7 @@ If a venue is present:
 
 **Determine the venue page path:** `{{WIKI_ROOT}}/wiki/venues/<venue-slug>.md`
 
-**Guess venue type** based on the venue name:
+**Guess venue type** based on `canonical_name` (the year/ordinal-stripped name from Step 3):
 - If the name contains "workshop", "symposium" → `workshop`
 - If the name contains "arxiv", "preprint" → `preprint-server`
 - If the name contains "transactions", "journal", "letters", "magazine", "review" → `journal`

@@ -211,7 +211,11 @@ tags: [field/...]
 
 ## §3.5 Slug generation rules
 
-Applies to all non-paper entity pages (paper pages use `paper-id`). Concept/method/open-problem/claim/result/author/venue slugs are derived deterministically from a title string:
+Applies to all non-paper entity pages (paper pages use `paper-id`). Concept/method/open-problem/claim/result/author/venue slugs are derived deterministically from a title string.
+
+**Exception for venue slugs:** venue slugs go through `academic_wiki_lib.venue_normalize.normalize_venue` (see the venue schema above). That helper applies year/ordinal stripping and **omits the 60-character truncation** in rule 5 below, so same-series editions reliably collapse to one slug even when the canonical name exceeds 60 characters.
+
+For all other entity types:
 
 1. Unicode NFKD normalize, strip combining marks (ASCII-fold): `"SIC'19 Paper" → "SIC'19 Paper"` (unchanged); `"α-divergence" → "a-divergence"`.
 2. Lowercase.
