@@ -108,3 +108,16 @@ def test_trailing_leading_commas_stripped():
     canonical, slug = normalize_venue(",IEEE Transactions,")
     assert canonical == "IEEE Transactions"
     assert slug == "ieee-transactions"
+
+
+@pytest.mark.parametrize("raw,canonical,slug", WORKED_EXAMPLES)
+def test_normalize_venue_is_idempotent(raw, canonical, slug):
+    """Re-normalizing a canonical_name returns the same canonical_name and slug.
+
+    This is the property compile relies on for re-runs to be safe: if a venue
+    page already has a canonical name, compile re-normalizing it must not drift.
+    """
+    once_canonical, once_slug = normalize_venue(raw)
+    twice_canonical, twice_slug = normalize_venue(once_canonical)
+    assert once_canonical == twice_canonical
+    assert once_slug == twice_slug
