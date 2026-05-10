@@ -44,3 +44,60 @@ def test_normalize_venue_worked_examples(raw, canonical, slug):
     got_canonical, got_slug = normalize_venue(raw)
     assert got_canonical == canonical, f"canonical mismatch for {raw!r}"
     assert got_slug == slug, f"slug mismatch for {raw!r}"
+
+
+def test_year_boundaries():
+    # 1899 and 2100 are outside the 1900-2099 window — kept verbatim.
+    assert normalize_venue("GLOBECOM 1899")[1] == "globecom-1899"
+    assert normalize_venue("ICASSP 2100")[1] == "icassp-2100"
+
+
+def test_non_year_digits_preserved():
+    # 4-digit runs that aren't (19|20)NN don't match the year regex.
+    # 2-3 digit runs and embedded digits like "5G", "802.11" are left alone.
+    assert normalize_venue("5G NR Workshop")[1] == "5g-nr-workshop"
+    assert normalize_venue("802.11 Standards Forum")[1] == "802-11-standards-forum"
+    assert normalize_venue("4G LTE Forum")[1] == "4g-lte-forum"
+
+
+def test_year_glued_to_token():
+    assert normalize_venue("VTC2022-Fall")[1] == "vtc-fall"
+    assert normalize_venue("WCNC2023")[1] == "wcnc"
+
+
+def test_ordinal_anywhere():
+    # Ordinals strip even when not at the start; remaining text becomes the slug.
+    assert normalize_venue("21st Century Networking")[1] == "century-networking"
+    assert normalize_venue("Section 1st on Optics")[1] == "section-on-optics"
+
+
+def test_paren_and_bracket_unwrap():
+    # All three syntaxes produce the same canonical and slug after year strip.
+    a = normalize_venue("Conference on X (AINA 2005)")
+    b = normalize_venue("Conference on X [AINA 2005]")
+    c = normalize_venue("Conference on X AINA (2005)")
+    assert a == b == c
+    assert a[1] == "conference-on-x-aina"
+
+
+def test_empty_input_raises():
+    with pytest.raises(ValueError):
+        normalize_venue("")
+    with pytest.raises(ValueError):
+        normalize_venue("   ")
+    with pytest.raises(ValueError):
+        normalize_venue(None)
+
+
+def test_only_year_and_ordinal_raises():
+    # Nothing left after stripping → ValueError.
+    with pytest.raises(ValueError):
+        normalize_venue("2024 21st")
+    with pytest.raises(ValueError):
+        normalize_venue("2022")
+
+
+def test_trailing_leading_commas_stripped():
+    canonical, slug = normalize_venue(",IEEE Transactions,")
+    assert canonical == "IEEE Transactions"
+    assert slug == "ieee-transactions"
