@@ -662,6 +662,8 @@ Mutating commands (`ingest`, `compile`, `query` with promotion, `lint --fix-*`, 
 - Stale lock (holding pid is gone): treat as released. Log a warning and take the lock.
 - Any command that panics between acquire and release leaves the lock; stale-pid detection recovers on the next attempt.
 
+**Cross-platform behavior.** Stale-lock detection works on Windows as well as POSIX via `_is_alive()`'s platform branch — POSIX uses `os.kill(pid, 0)`; Windows uses `OpenProcess` + `GetExitCodeProcess` via `ctypes`. The bash `trap EXIT` cleanup mechanism documented in earlier drafts of SKILL.md has been removed in favor of explicit `release` calls on every error-exit path; agent-crash recovery now relies entirely on stale-PID detection, which is platform-agnostic. Per-entity locks (`<wiki>/.locks/<kind>/<key>.lock`) use the `filelock` library, which selects the appropriate OS primitive (`fcntl.flock` on POSIX, `msvcrt.locking` on Windows) and auto-releases on process death across both platforms.
+
 Read-only commands (`query` without promotion, `lint` without fix passes) do not take the lock.
 
 ### 8.2 Error catalog

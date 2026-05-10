@@ -80,7 +80,7 @@ Expected wall time on 1000 papers: ~30-60 seconds (mostly file I/O).
 
 **New file:** `scripts/academic_wiki_lib/entity_lock.py`
 
-Uses POSIX `fcntl.flock` — advisory file locking with automatic release on process death.
+Uses `filelock.FileLock` — advisory file locking with automatic release on process death. `filelock` dispatches internally to `fcntl.flock` on POSIX and `msvcrt.locking` on Windows, so the same code path works on both platforms.
 
 ### 3.1 Low-level API
 
@@ -92,15 +92,7 @@ def acquire(wiki_root, kind: str, key: str, timeout_seconds: float = 60.0):
     kind: one of 'paper' | 'concept' | 'method' | 'open-problem' | 'venue' | 'reports'
     Raises TimeoutError past deadline; raises ValueError if kind is unrecognized.
 
-    Timeout is implemented as a non-blocking retry loop:
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline: raise TimeoutError
-                time.sleep(0.1)
-    (fcntl.flock in blocking mode supports no timeout, so we poll.)
+    Timeout is delegated to `filelock`'s built-in `timeout` parameter: `FileLock(path, timeout=timeout_seconds).acquire()`. On `Timeout`, the wrapper raises `TimeoutError` to preserve the existing public contract.
 
     Lock auto-releases when the holding process exits (crash or clean), so
     "stale lock" is only possible if a process is alive but wedged. If that
