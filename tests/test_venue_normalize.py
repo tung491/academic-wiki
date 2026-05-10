@@ -110,8 +110,8 @@ def test_trailing_leading_commas_stripped():
     assert slug == "ieee-transactions"
 
 
-@pytest.mark.parametrize("raw,canonical,slug", WORKED_EXAMPLES)
-def test_normalize_venue_is_idempotent(raw, canonical, slug):
+@pytest.mark.parametrize("raw,_canonical,_slug", WORKED_EXAMPLES)
+def test_normalize_venue_is_idempotent(raw, _canonical, _slug):
     """Re-normalizing a canonical_name returns the same canonical_name and slug.
 
     This is the property compile relies on for re-runs to be safe: if a venue
@@ -119,5 +119,9 @@ def test_normalize_venue_is_idempotent(raw, canonical, slug):
     """
     once_canonical, once_slug = normalize_venue(raw)
     twice_canonical, twice_slug = normalize_venue(once_canonical)
-    assert once_canonical == twice_canonical
-    assert once_slug == twice_slug
+    assert once_canonical == twice_canonical, (
+        f"canonical drifted for {raw!r}: {once_canonical!r} -> {twice_canonical!r}"
+    )
+    assert once_slug == twice_slug, (
+        f"slug drifted for {raw!r}: {once_slug!r} -> {twice_slug!r}"
+    )
