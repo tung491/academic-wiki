@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .frontmatter import read_frontmatter
-from .venue_normalize import normalize_venue
+from .venue_normalize import near_duplicate_pairs, normalize_venue
 
 
 def _to_str_list(val) -> list[str]:
@@ -193,6 +193,14 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
     pages_in_plan = sum(len(g.members) for g in plan.groups)
     total_considered = pages_in_plan + len(plan.skipped) + plan.no_ops
 
+    # Post-normalization slugs (canonical slugs from the plan + already-canonical
+    # no-op slugs reachable via member.slug). Use this for near-duplicate detection.
+    post_slugs = {g.new_slug for g in plan.groups}
+    for g in plan.groups:
+        for m in g.members:
+            post_slugs.add(m.slug)
+    near_dups = near_duplicate_pairs(post_slugs)
+
     lines: list[str] = []
     lines.append(f"# Venue Migration Plan — {today}\n")
     lines.append("## Summary")
@@ -208,6 +216,11 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
             f"{_plural(len(merges), 'page', 'pages')}"
         )
     lines.append(f"- {len(rewrites)} paper pages need `venue:` and `venue/*` tag rewrites")
+    if near_dups:
+        lines.append(
+            f"- {len(near_dups)} near-duplicate slug "
+            f"{_plural(len(near_dups), 'pair', 'pairs')} flagged for manual review"
+        )
     lines.append("")
 
     if renames:
@@ -237,7 +250,13 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
                 f"{', '.join('`' + t + '`' for t in g.new_tags) if g.new_tags else '_none_'}"
             )
             lines.append(f"New `name:` \"{g.new_canonical_name}\"")
-            lines.append(f"New `venue-type:` {g.new_venue_type}")
+            distinct_types = {m.venue_type for m in g.members}
+            type_note = (
+                f" (resolved from {len(distinct_types)}-way disagreement: "
+                f"{', '.join(sorted(distinct_types))})"
+                if len(distinct_types) > 1 else ""
+            )
+            lines.append(f"New `venue-type:` {g.new_venue_type}{type_note}")
             lines.append(f"New `created:` {g.new_created}")
             lines.append("")
 
@@ -246,6 +265,24 @@ def render_report(plan: Plan, rewrites: list[PaperRewrite], today: str) -> str:
         for r in rewrites:
             lines.append(f"- `{r.paper_id}.md`: `venue: {r.old_slug}` → `{r.new_slug}`; "
                          f"tag `venue/{r.old_slug}` → `venue/{r.new_slug}`")
+        lines.append("")
+
+    if near_dups:
+        lines.append("## Near-duplicates flagged for manual review")
+        lines.append(
+            "These pairs may represent the same venue with spelling variants. "
+            "Review and either merge them manually (edit the canonical page's "
+            "frontmatter, delete the duplicate, add the old slug to `aliases:`) "
+            "or confirm they are distinct."
+        )
+        lines.append("")
+        for a, b, sim in near_dups:
+            a_tail = a.rsplit("-", 1)[-1] if "-" in a else a
+            b_tail = b.rsplit("-", 1)[-1] if "-" in b else b
+            suffix_note = (
+                f"; matching acronym suffix `{a_tail}`" if a_tail and a_tail == b_tail else ""
+            )
+            lines.append(f"- `{a}` ↔ `{b}` (similarity {sim:.2f}{suffix_note})")
         lines.append("")
 
     if plan.skipped:

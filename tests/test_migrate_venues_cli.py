@@ -412,3 +412,66 @@ def test_apply_repeats_are_no_ops(tmp_git_wiki):
                                capture_output=True, text=True).stdout.strip()
     leftover = [line for line in porcelain.splitlines() if not line.endswith(".lock")]
     assert leftover == [], f"working tree not clean after repeated applies: {leftover!r}"
+
+
+def test_dry_run_then_apply_works(tmp_git_wiki):
+    """The natural flow (dry-run preview, then apply) must not be blocked by
+    the dirty-tree guard. The dry-run leaves the report file untracked; --apply
+    must skip past it and pick it up via git add -A."""
+    _venue(tmp_git_wiki, "2024-aina", "2024 AINA", papers=["pA"])
+    _paper(tmp_git_wiki, "pA", "2024-aina")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    r1 = run_migrate(tmp_git_wiki, "--dry-run")
+    assert r1.returncode == 0, r1.stderr
+
+    r2 = run_migrate(tmp_git_wiki, "--apply")
+    assert r2.returncode == 0, r2.stderr
+
+    # Migration actually happened
+    assert (tmp_git_wiki / "wiki/venues/aina.md").exists()
+    assert not (tmp_git_wiki / "wiki/venues/2024-aina.md").exists()
+
+
+def test_apply_report_includes_near_duplicate_section(tmp_git_wiki):
+    """When two post-normalization slugs differ only by spelling, the report
+    surfaces them under a 'Near-duplicates flagged for manual review' section."""
+    _venue(tmp_git_wiki,
+           "ieee-cic-international-conference-on-communications-in-china-iccc",
+           "IEEE/CIC International Conference on Communications in China",
+           papers=["p1"])
+    _venue(tmp_git_wiki,
+           "ieeecic-international-conference-on-communications-in-china-iccc",
+           "IEEECIC International Conference on Communications in China",
+           papers=["p2"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venues"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--dry-run")
+    assert result.returncode == 0, result.stderr
+
+    reports = list((tmp_git_wiki / "outputs" / "reports").glob("*-venue-migration.md"))
+    assert reports
+    report = reports[0].read_text()
+    assert "## Near-duplicates flagged for manual review" in report
+    assert "near-duplicate slug" in report  # summary bullet
+
+
+def test_apply_report_flags_venue_type_conflict(tmp_git_wiki):
+    """Merge groups whose members disagree on venue-type get a conflict note in the report."""
+    _venue(tmp_git_wiki, "2022-fooconf", "2022 FooConf",
+           papers=["p1", "p2"], venue_type="conference")
+    _venue(tmp_git_wiki, "2023-fooconf", "2023 FooConf",
+           papers=["p3"], venue_type="journal")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venues"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--dry-run")
+    assert result.returncode == 0, result.stderr
+
+    reports = list((tmp_git_wiki / "outputs" / "reports").glob("*-venue-migration.md"))
+    assert reports
+    report = reports[0].read_text()
+    assert "resolved from 2-way disagreement" in report
+    assert "conference" in report and "journal" in report

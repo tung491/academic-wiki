@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import re
 import subprocess  # used by _run_apply (Tasks 11-14)
 import sys
 from datetime import date
@@ -189,13 +190,28 @@ def _git(cwd: Path, *args: str, check: bool = True, capture: bool = True) -> sub
     )
 
 
+_REPORT_RE = re.compile(r"outputs/reports/.*-venue-migration\.md$")
+
+
 def _is_dirty(wiki_root: Path) -> bool:
-    out = _git(wiki_root, "status", "--porcelain", check=False).stdout
-    # Exclude the advisory lock file — it is transiently created by the script
-    # itself and should not trigger the dirty-tree guard. Production wikis put
-    # `.lock` in `.gitignore` (see templates.GITIGNORE), but the test fixture
-    # doesn't, so this filter keeps both cases honest.
-    lines = [line for line in out.splitlines() if not line.endswith(".lock")]
+    # --untracked-files=all so untracked subdirectories are expanded into their
+    # individual files; otherwise git would just emit "?? outputs/" and we
+    # couldn't tell whether it's only a stale report or something the user
+    # cares about.
+    out = _git(wiki_root, "status", "--porcelain", "--untracked-files=all",
+               check=False).stdout
+    # Exclude:
+    # - the advisory `.lock` file (transiently created by the script itself)
+    # - venue-migration report files (the tool itself writes them; --apply
+    #   commits them in the same flow, so they should not block --apply
+    #   when an earlier --dry-run already wrote one)
+    lines = []
+    for line in out.splitlines():
+        if line.endswith(".lock"):
+            continue
+        if _REPORT_RE.search(line):
+            continue
+        lines.append(line)
     return bool(lines)
 
 
@@ -283,7 +299,15 @@ def _run_apply(wiki_root: Path) -> int:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Venue migration tool")
+    p = argparse.ArgumentParser(
+        description="Venue migration tool",
+        epilog=(
+            "On a successful --apply, the wiki gets a snapshot tag named\n"
+            "snapshot/pre-venue-migration-YYYY-MM-DD. To roll back, run:\n"
+            "    git -C <wiki> reset --hard snapshot/pre-venue-migration-<date>"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki-path", required=True, type=Path)
     grp = p.add_mutually_exclusive_group()
     grp.add_argument("--dry-run", action="store_true", default=False)
