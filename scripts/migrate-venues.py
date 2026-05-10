@@ -219,6 +219,9 @@ def _append_log(wiki_root: Path, today: str, summary: str) -> None:
 
 def _commit_all(wiki_root: Path, summary: str) -> None:
     _git(wiki_root, "add", "-A")
+    diff = _git(wiki_root, "diff", "--cached", "--quiet", check=False)
+    if diff.returncode == 0:
+        return  # nothing staged — no-op
     _git(wiki_root, "commit", "-m", f"migrate: venue normalization ({summary})")
 
 
@@ -247,6 +250,10 @@ def _run_apply(wiki_root: Path) -> int:
         print(f"Fix these pages and re-run, or remove them from the wiki. "
               f"Report at {report_path}", file=sys.stderr)
         return 6
+    # Nothing to do — report already written; no snapshot/log/commit needed.
+    if not plan.groups and not rewrites:
+        return 0
+
     _make_snapshot(wiki_root, today)
 
     n_renames = sum(1 for g in plan.groups if not g.is_merge)

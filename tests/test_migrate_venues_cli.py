@@ -348,3 +348,49 @@ def test_apply_writes_log_and_single_commit(tmp_git_wiki):
     # log.md got an entry
     log = (tmp_git_wiki / "log.md").read_text()
     assert "migrate-venues" in log
+
+
+def test_apply_then_dry_run_reports_zero_changes(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    _venue(tmp_git_wiki, "2023-57th-asilomar-conference-on-signals-systems-and-computers",
+           "2023 57th Asilomar Conference on Signals, Systems, and Computers", papers=["pB"])
+    _paper(tmp_git_wiki, "pA",
+           "2022-56th-asilomar-conference-on-signals-systems-and-computers")
+    _paper(tmp_git_wiki, "pB",
+           "2023-57th-asilomar-conference-on-signals-systems-and-computers")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    # First --apply
+    r1 = run_migrate(tmp_git_wiki, "--apply")
+    assert r1.returncode == 0, r1.stderr
+
+    # Now --dry-run again — plan should be empty
+    r2 = run_migrate(tmp_git_wiki, "--dry-run")
+    assert r2.returncode == 0, r2.stderr
+
+    reports = sorted((tmp_git_wiki / "outputs" / "reports").glob("*-venue-migration.md"))
+    assert reports
+    latest = reports[-1].read_text()
+    # No renames, no merges
+    assert "0 renamed" in latest or "## Renames" not in latest
+    assert "## Merges" not in latest
+
+
+def test_apply_twice_is_no_op(tmp_git_wiki):
+    """Re-running --apply after success makes no changes (no new commit)."""
+    _venue(tmp_git_wiki, "2024-aina", "2024 AINA", papers=["pA"])
+    _paper(tmp_git_wiki, "pA", "2024-aina")
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_git_wiki, check=True)
+
+    run_migrate(tmp_git_wiki, "--apply")
+    head_after_first = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
+                                      capture_output=True, text=True).stdout.strip()
+
+    r = run_migrate(tmp_git_wiki, "--apply")
+    assert r.returncode == 0, r.stderr
+    head_after_second = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_git_wiki,
+                                       capture_output=True, text=True).stdout.strip()
+    assert head_after_second == head_after_first, "second --apply should not add commits"
