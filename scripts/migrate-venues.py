@@ -7,7 +7,7 @@ report or applies the consolidation (renames + merges + paper-page rewrites).
 from __future__ import annotations
 
 import argparse
-import subprocess  # used by _run_apply (Tasks 11-14, git mv / git tag / git commit)
+import subprocess  # used by _run_apply (Tasks 11-14)
 import sys
 from datetime import date
 from pathlib import Path
@@ -15,24 +15,69 @@ from pathlib import Path
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
+from academic_wiki_lib.frontmatter import read_frontmatter, write_frontmatter
 from academic_wiki_lib.lockfile import LockHeld, acquire, release
-from academic_wiki_lib.venue_migrate import collect_paper_rewrites, compute_plan, render_report
+from academic_wiki_lib.venue_migrate import (
+    Group,
+    PaperRewrite,
+    Plan,
+    collect_paper_rewrites,
+    compute_plan,
+    render_report,
+)
 
 
 def _today() -> str:
     return date.today().isoformat()
 
 
-def _run_dry_run(wiki_root: Path) -> tuple[int, str]:
-    """Compute plan, write report. Return (exit_code, report_path)."""
-    today = _today()
+def _build_report(wiki_root: Path) -> tuple[Plan, list[PaperRewrite], str]:
     plan = compute_plan(wiki_root)
     rewrites = collect_paper_rewrites(wiki_root, plan)
-    report = render_report(plan, rewrites, today=today)
-    out_path = wiki_root / "outputs" / "reports" / f"{today}-venue-migration.md"
+    report = render_report(plan, rewrites, today=_today())
+    return plan, rewrites, report
+
+
+def _write_report(wiki_root: Path, report: str) -> Path:
+    out_path = wiki_root / "outputs" / "reports" / f"{_today()}-venue-migration.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
-    return 0, str(out_path)
+    return out_path
+
+
+def _apply_rename(group: Group) -> None:
+    """Rename a single-page group's file and update its slug/name/aliases."""
+    page = group.members[0]
+    new_path = page.path.parent / f"{group.new_slug}.md"
+    fm, body = read_frontmatter(page.path)
+    fm["slug"] = group.new_slug
+    fm["name"] = group.new_canonical_name
+    fm["updated"] = _today()
+    aliases = list(fm.get("aliases") or [])
+    if page.slug not in aliases:
+        aliases.append(page.slug)
+    fm["aliases"] = aliases
+    # Move file with `git mv` to preserve history when in a git repo, else os.rename
+    try:
+        subprocess.run(["git", "mv", str(page.path), str(new_path)],
+                       cwd=page.path.parents[2], check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        # Fallback for non-git or untracked files
+        page.path.rename(new_path)
+    write_frontmatter(new_path, fm, body)
+
+
+def _run_apply(wiki_root: Path) -> int:
+    plan, rewrites, report = _build_report(wiki_root)
+    _write_report(wiki_root, report)
+
+    for g in plan.groups:
+        if g.is_merge:
+            # Tasks 12+ implement merges
+            continue
+        _apply_rename(g)
+    # Tasks 13+ implement paper-page rewrites and commit
+    return 0
 
 
 def main(argv=None) -> int:
@@ -58,11 +103,11 @@ def main(argv=None) -> int:
 
     try:
         if args.apply:
-            print("ERROR: --apply not yet implemented (Tasks 11-15)", file=sys.stderr)
-            return 4
-        rc, report_path = _run_dry_run(wiki_root)
-        print(f"Dry-run report written to: {report_path}")
-        return rc
+            return _run_apply(wiki_root)
+        plan, rewrites, report = _build_report(wiki_root)
+        out = _write_report(wiki_root, report)
+        print(f"Dry-run report written to: {out}")
+        return 0
     finally:
         release(lock_path)
 

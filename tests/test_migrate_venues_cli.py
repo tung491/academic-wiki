@@ -89,3 +89,27 @@ def test_lock_held_aborts(tmp_git_wiki):
     apply_ = run_migrate(tmp_git_wiki, "--apply")
     assert apply_.returncode != 0
     assert "lock" in (apply_.stderr + apply_.stdout).lower()
+
+
+def test_apply_single_page_rename(tmp_git_wiki):
+    _venue(tmp_git_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    subprocess.run(["git", "add", "."], cwd=tmp_git_wiki, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "venue"], cwd=tmp_git_wiki, check=True)
+
+    result = run_migrate(tmp_git_wiki, "--apply")
+    assert result.returncode == 0, result.stderr
+
+    old_path = tmp_git_wiki / "wiki/venues/2022-56th-asilomar-conference-on-signals-systems-and-computers.md"
+    new_path = tmp_git_wiki / "wiki/venues/asilomar-conference-on-signals-systems-and-computers.md"
+    assert not old_path.exists(), "old slug file should be removed"
+    assert new_path.exists(), "canonical slug file should exist"
+
+    from academic_wiki_lib.frontmatter import read_frontmatter
+    fm, body = read_frontmatter(new_path)
+    assert fm["slug"] == "asilomar-conference-on-signals-systems-and-computers"
+    assert fm["name"] == "Asilomar Conference on Signals, Systems, and Computers"
+    # Old slug recorded as alias
+    assert "2022-56th-asilomar-conference-on-signals-systems-and-computers" in fm.get("aliases", [])
+    # Body of original page preserved
+    assert "Body of 2022-56th-asilomar" in body
