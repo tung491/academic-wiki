@@ -4,7 +4,7 @@
 Reports issues as lines starting with issue tags like DEAD_LINK, ORPHAN,
 MISSING_FIELD_TAG, STALE, MISSING_SECTION, INVALID_CITES, MISSING_BIBTEX,
 INDEX_DRIFT, VERSION_DRIFT, EXTRACT_MISSING, EXTRACT_FAILED, CONTRADICTION,
-ALIAS_LINK.
+ALIAS_LINK, VENUE_NEAR_DUPLICATE.
 
 Exit code 0 always (lint reports, not gates).
 """
@@ -81,7 +81,7 @@ def _check_venue_near_duplicates(files: dict[str, tuple]) -> list[str]:
     Returns a list of issue lines; empty if no pairs.
     """
     venue_slugs = []
-    for slug, (path, fm, _) in files.items():
+    for slug, (_, fm, _) in files.items():
         if fm.get("type") == "venue":
             venue_slugs.append(slug)
     pairs = near_duplicate_pairs(venue_slugs)
