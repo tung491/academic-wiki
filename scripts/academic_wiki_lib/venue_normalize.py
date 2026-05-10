@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Iterable
+from collections.abc import Iterable
 
 from .slug import _transliterate, _strip_leading_stopword_if_remaining_multiword
 
@@ -113,5 +113,13 @@ def near_duplicate_pairs(
     slugs: Iterable[str],
     threshold: float = 0.92,
 ) -> list[tuple[str, str, float]]:
-    """Stub — implemented in Task 4."""
+    """Return pairs (slug_a, slug_b, similarity) with similarity >= threshold.
+
+    Uses difflib.SequenceMatcher on the space-joined token list (split on '-').
+    Symmetric: (a, b) appears once with a < b lexicographically.
+    Acronym-suffix reinforcement: slugs sharing the same trailing token AND
+    similarity >= 0.85 are also flagged.
+
+    Not yet implemented — see Task 4.
+    """
     raise NotImplementedError
