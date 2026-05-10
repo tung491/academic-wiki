@@ -76,14 +76,21 @@ Input:  "2022 56th Asilomar Conference on Signals, Systems, and Computers"
    Glued example: "VTC2022-Fall" → "VTC-Fall" (year matched between non-digit
    boundaries on both sides).
 
-4. Strip leftover ordinal/year separators — runs of whitespace, commas, and
-   hyphens with no word in between collapse to a single space.
+4. Collapse whitespace runs to a single space. Commas are preserved in the
+   canonical name (worked example 1 requires "Signals, Systems, and Computers"
+   to keep its commas). Strip leading/trailing commas, semicolons, and stray
+   hyphens that lost a neighbor when the year/ordinal next to them was removed.
 
-5. Compute canonical_name — trim, collapse internal whitespace to single space,
-   strip leading punctuation/space.
+5. Compute canonical_name — trim, collapse internal whitespace to single space.
    canonical_name = "Asilomar Conference on Signals, Systems, and Computers"
 
-6. Compute slug — feed canonical_name to existing make_slug().
+6. Compute slug via a private `_venue_slug()` that mirrors `make_slug` (NFKD,
+   ASCII-fold, lowercase, Greek transliteration, non-alphanumeric→hyphen,
+   collapse hyphen runs, leading-stop-word filter) but **omits the 60-char
+   truncation** because long conference names produce slugs above 60 chars
+   (e.g., the AINA worked example is 81 chars). Reuses helpers from `slug.py`
+   (`_transliterate`, `_strip_leading_stopword_if_remaining_multiword`) to
+   avoid duplication.
    slug = "asilomar-conference-on-signals-systems-and-computers"
 ```
 
@@ -109,7 +116,7 @@ Input:  "2022 56th Asilomar Conference on Signals, Systems, and Computers"
 
 ### Asymmetry note
 
-`make_slug()` ASCII-folds Greek and applies a stop-word filter (drops leading `a`/`an`/`the`/`on`/`of`/`for`/`with` if the remainder is multi-word). Because `normalize_venue` calls `make_slug` last, those rules apply to the slug. The `canonical_name` retains stop words and original casing — intentional, since it's the human-readable name on the venue page.
+`_venue_slug()` ASCII-folds Greek and applies a stop-word filter (drops leading `a`/`an`/`the`/`on`/`of`/`for`/`with` if the remainder is multi-word). Those rules apply to the slug. The `canonical_name` retains stop words, commas, and original casing — intentional, since it's the human-readable name on the venue page.
 
 ## Compile-time integration
 
