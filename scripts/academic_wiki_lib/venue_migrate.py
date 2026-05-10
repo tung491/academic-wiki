@@ -65,6 +65,14 @@ class Plan:
     skipped: list[str] = field(default_factory=list)
 
 
+@dataclass
+class PaperRewrite:
+    paper_id: str
+    path: Path
+    old_slug: str
+    new_slug: str
+
+
 def _scan_venue_pages(wiki_root: Path) -> tuple[list[VenuePage], list[str]]:
     """Return (parsed pages, skipped reasons)."""
     venues_dir = wiki_root / "wiki" / "venues"
@@ -163,3 +171,52 @@ def compute_plan(wiki_root: str | os.PathLike) -> Plan:
         ))
 
     return Plan(groups=groups, skipped=skipped)
+
+
+def collect_paper_rewrites(wiki_root: str | os.PathLike, plan: Plan) -> list[PaperRewrite]:
+    """Find every paper page whose venue: or venue/* tag references an old
+    slug that the plan will replace."""
+    root = Path(os.fspath(wiki_root))
+
+    # Build map: old_slug -> new_slug (only for slugs that actually change)
+    old_to_new: dict[str, str] = {}
+    for g in plan.groups:
+        for m in g.members:
+            if m.slug != g.new_slug:
+                old_to_new[m.slug] = g.new_slug
+
+    if not old_to_new:
+        return []
+
+    papers_dir = root / "wiki" / "papers"
+    rewrites: list[PaperRewrite] = []
+    if not papers_dir.is_dir():
+        return rewrites
+    for md in sorted(papers_dir.glob("*.md")):
+        try:
+            fm, _ = read_frontmatter(md)
+        except Exception:
+            continue
+        if not isinstance(fm, dict):
+            continue
+        venue = fm.get("venue")
+        tags = fm.get("tags") or []
+        old_slug = None
+        if isinstance(venue, str) and venue in old_to_new:
+            old_slug = venue
+        else:
+            for t in tags:
+                if isinstance(t, str) and t.startswith("venue/"):
+                    candidate = t[len("venue/"):]
+                    if candidate in old_to_new:
+                        old_slug = candidate
+                        break
+        if old_slug is None:
+            continue
+        rewrites.append(PaperRewrite(
+            paper_id=fm.get("paper-id") or md.stem,
+            path=md,
+            old_slug=old_slug,
+            new_slug=old_to_new[old_slug],
+        ))
+    return rewrites

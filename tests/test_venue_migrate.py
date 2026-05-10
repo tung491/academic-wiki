@@ -150,3 +150,48 @@ def test_unparseable_frontmatter_listed_separately(tmp_wiki):
     bad.write_text("---\nthis: is: not: valid yaml: [\n---\nbody\n")
     plan = compute_plan(tmp_wiki)
     assert any("broken.md" in s for s in plan.skipped)
+
+
+from academic_wiki_lib.venue_migrate import collect_paper_rewrites, PaperRewrite
+
+
+def _paper(tmp_wiki, slug, venue_slug, extra_tags=()):
+    fm = {
+        "paper-id": slug, "type": "paper", "status": "read",
+        "created": "2024-01-01", "updated": "2024-01-01",
+        "title": "T", "authors": [], "year": 2024,
+        "venue": venue_slug,
+        "identifiers": {}, "aliases": [], "bib-file": "x",
+        "extract": "x", "references-raw": [], "cites": [],
+        "tags": [f"venue/{venue_slug}", *extra_tags],
+    }
+    write_frontmatter(str(tmp_wiki / "wiki/papers" / f"{slug}.md"), fm, "Body.\n")
+
+
+def test_collect_paper_rewrites_matches_venue_field_and_tag(tmp_wiki):
+    _venue(tmp_wiki, "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           "2022 56th Asilomar Conference on Signals, Systems, and Computers", papers=["pA"])
+    _paper(tmp_wiki, "pA",
+           "2022-56th-asilomar-conference-on-signals-systems-and-computers",
+           extra_tags=["field/wireless-comms"])
+    _paper(tmp_wiki, "pUnaffected", "ieee-transactions-on-communications")
+
+    plan = compute_plan(tmp_wiki)
+    rewrites = collect_paper_rewrites(tmp_wiki, plan)
+    rw_by_paper = {r.paper_id: r for r in rewrites}
+    assert "pA" in rw_by_paper
+    assert "pUnaffected" not in rw_by_paper
+    rw = rw_by_paper["pA"]
+    assert rw.old_slug == "2022-56th-asilomar-conference-on-signals-systems-and-computers"
+    assert rw.new_slug == "asilomar-conference-on-signals-systems-and-computers"
+
+
+def test_collect_paper_rewrites_skips_papers_pointing_at_no_op_slugs(tmp_wiki):
+    """If a paper's venue: equals a slug that is a no-op (already canonical),
+    no rewrite is needed."""
+    _venue(tmp_wiki, "ieee-transactions-on-communications",
+           "IEEE Transactions on Communications", papers=["pA"])
+    _paper(tmp_wiki, "pA", "ieee-transactions-on-communications")
+    plan = compute_plan(tmp_wiki)
+    rewrites = collect_paper_rewrites(tmp_wiki, plan)
+    assert rewrites == []
